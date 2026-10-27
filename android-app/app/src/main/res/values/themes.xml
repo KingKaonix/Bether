@@ -1,0 +1,8 @@
+<resources>
+    <style name="Theme.TetherApp" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="colorPrimary">#00ffcc</item>
+        <item name="colorPrimaryDark">#0088aa</item>
+        <item name="colorAccent">#ff00aa</item>
+        <item name="android:windowBackground">#0a0a0a</item>
+    </style>
+</resources>

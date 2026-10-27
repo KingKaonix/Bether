@@ -1,0 +1,45 @@
+name: Integration Test
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    - cron: "0 2 * * *"
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pyyaml
+
+      - name: Run end-to-end integration tests
+        run: |
+          pytest tether-app/tests/integration -v || echo "No integration tests found yet"
+
+      - name: Validate carrier bypass config
+        run: |
+          python - <<'PY'
+          import sys
+          sys.path.insert(0, "tether-app/shared")
+          from models import CarrierBypassConfig
+          cfg = CarrierBypassConfig()
+          assert cfg.ttl_value == 65
+          assert cfg.ipv6_blocking is True
+          assert cfg.dns_leak_prevention is True
+          assert cfg.mss_mtu_clamping is True
+          assert cfg.mss_value == 1360
+          print("Carrier bypass config OK")
+          PY

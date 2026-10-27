@@ -1,0 +1,28 @@
+# Android
+*.apk
+*.aab
+/app/build/
+/app/.gradle/
+/gradle/
+!gradle/wrapper/gradle-wrapper.properties
+/local.properties
+/.cxx/
+/.externalNativeBuild/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.env
+.vscode/
+.venv/
+venv/
+
+# OS
+.DS_Store
+Thumbs.db

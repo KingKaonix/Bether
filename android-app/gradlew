@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# Gradle wrapper startup script (stub for environments without Gradle).
+set -e
+APP_NAME="Gradle"
+APP_BASE_NAME=$(basename "$0")
+# Minimal stub: delegates to system gradle if available, otherwise instructs user.
+if command -v gradle >/dev/null 2>&1; then
+  exec gradle "$@"
+else
+  echo "Gradle not found on PATH. Install Gradle or run with the full wrapper." >&2
+  exit 1
+fi

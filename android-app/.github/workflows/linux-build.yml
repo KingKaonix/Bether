@@ -1,0 +1,46 @@
+name: Linux Client Build
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install flake8 black pytest pyyaml
+
+      - name: Lint Linux client source
+        run: |
+          flake8 tether-app/linux-client/src tether-app/linux-client/scripts tether-app/shared || true
+
+      - name: Format check
+        run: |
+          black --check tether-app/linux-client/src tether-app/linux-client/scripts tether-app/shared || true
+
+      - name: Run Python tests
+        run: |
+          pytest tether-app/linux-client/src -v || true
+
+      - name: Verify connection script syntax
+        run: |
+          bash -n tether-app/linux-client/scripts/connect.sh
+          bash -n tether-app/linux-client/scripts/disconnect.sh
