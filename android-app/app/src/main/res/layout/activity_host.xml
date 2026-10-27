@@ -1,14 +1,106 @@
 <?xml version="1.0" encoding="utf-8"?>
-<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    android:padding="16dp">
 
-    <TextView
-        android:layout_width="wrap_content"
+    <LinearLayout
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_gravity="center"
-        android:text="Host Mode"
-        android:textSize="24sp"
-        android:textColor="@color/cyber_text"/>
+        android:orientation="vertical">
 
-</FrameLayout>
+        <TextView
+            android:id="@+id/tv_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Host Mode"
+            android:textSize="28sp"
+            android:textStyle="bold"
+            android:textColor="@color/cyber_primary"
+            android:layout_marginBottom="8dp"/>
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Tethering host — share your internet connection"
+            android:textSize="14sp"
+            android:textColor="@color/cyber_text"
+            android:layout_marginBottom="24dp"/>
+
+        <Switch
+            android:id="@+id/switch_usb"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="USB Tethering"
+            android:textColor="@color/cyber_text"
+            android:layout_marginBottom="8dp"/>
+
+        <Switch
+            android:id="@+id/switch_wifi"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="WiFi Hotspot"
+            android:textColor="@color/cyber_text"
+            android:layout_marginBottom="8dp"/>
+
+        <Switch
+            android:id="@+id/switch_bt"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Bluetooth DUN"
+            android:textColor="@color/cyber_text"
+            android:layout_marginBottom="24dp"/>
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Proxy &amp; Carrier Bypass"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:textColor="@color/cyber_primary"
+            android:layout_marginBottom="8dp"/>
+
+        <Switch
+            android:id="@+id/switch_proxy"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="SOCKS5 Proxy (port 1080, UDP)"
+            android:textColor="@color/cyber_text"
+            android:layout_marginBottom="8dp"/>
+
+        <Switch
+            android:id="@+id/switch_bypass"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Carrier Bypass (6-layer)"
+            android:textColor="@color/cyber_text"
+            android:layout_marginBottom="24dp"/>
+
+        <TextView
+            android:id="@+id/tv_status"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Status"
+            android:textSize="14sp"
+            android:textColor="@color/cyber_text"
+            android:layout_marginBottom="16dp"/>
+
+        <TextView
+            android:id="@+id/tv_bypass_status"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Bypass Status"
+            android:textSize="14sp"
+            android:textColor="@color/cyber_text"
+            android:layout_marginBottom="24dp"/>
+
+        <Button
+            android:id="@+id/btn_refresh_interfaces"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Refresh Network Interfaces"
+            android:layout_marginBottom="8dp"/>
+
+    </LinearLayout>
+</ScrollView>

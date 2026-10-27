@@ -1,14 +1,94 @@
 <?xml version="1.0" encoding="utf-8"?>
-<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    android:padding="16dp">
 
-    <TextView
-        android:layout_width="wrap_content"
+    <LinearLayout
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_gravity="center"
-        android:text="Client Mode"
-        android:textSize="24sp"
-        android:textColor="@color/cyber_text"/>
+        android:orientation="vertical">
 
-</FrameLayout>
+        <TextView
+            android:id="@+id/tv_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Client Mode"
+            android:textSize="28sp"
+            android:textStyle="bold"
+            android:textColor="@color/cyber_primary"
+            android:layout_marginBottom="8dp"/>
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Connect to a tethering host SOCKS5 proxy"
+            android:textSize="14sp"
+            android:textColor="@color/cyber_text"
+            android:layout_marginBottom="24dp"/>
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Host Address"
+            android:textSize="14sp"
+            android:textColor="@color/cyber_text"/>
+
+        <EditText
+            android:id="@+id/et_host"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="127.0.0.1"
+            android:textColor="@color/cyber_text"
+            android:textColorHint="@color/cyber_text"
+            android:layout_marginBottom="16dp"/>
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Port"
+            android:textSize="14sp"
+            android:textColor="@color/cyber_text"/>
+
+        <EditText
+            android:id="@+id/et_port"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="1080"
+            android:inputType="number"
+            android:textColor="@color/cyber_text"
+            android:textColorHint="@color/cyber_text"
+            android:layout_marginBottom="24dp"/>
+
+        <Button
+            android:id="@+id/btn_connect"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Connect"
+            android:layout_marginBottom="8dp"/>
+
+        <Button
+            android:id="@+id/btn_disconnect"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Disconnect"
+            android:layout_marginBottom="24dp"/>
+
+        <TextView
+            android:id="@+id/tv_status"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Status"
+            android:textSize="14sp"
+            android:textColor="@color/cyber_text"
+            android:layout_marginBottom="16dp"/>
+
+        <Button
+            android:id="@+id/btn_refresh"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Refresh Status"/>
+
+    </LinearLayout>
+</ScrollView>
