@@ -110,9 +110,17 @@ public class HostActivity extends AppCompatActivity {
         }
 
         carrierBypassEngine = new CarrierBypassEngine(this);
-        carrierBypassEngine.addListener((layer, state) -> {
-            Log.d(TAG, "Bypass layer " + layer + " -> " + state);
-            runOnUiThread(this::refreshBypassStatus);
+        carrierBypassEngine.addListener(new CarrierBypassEngine.BypassListener() {
+            @Override
+            public void onLayerStateChanged(CarrierBypassEngine.CarrierBypassLayer layer, CarrierBypassEngine.LayerState state) {
+                Log.d(TAG, "Bypass layer " + layer + " -> " + state);
+                runOnUiThread(HostActivity.this::refreshBypassStatus);
+            }
+
+            @Override
+            public void onBypassStatusChanged() {
+                runOnUiThread(HostActivity.this::refreshBypassStatus);
+            }
         });
 
         connectionStateMachine = new ConnectionStateMachine(10, 1000L);
@@ -160,7 +168,7 @@ public class HostActivity extends AppCompatActivity {
                     bluetoothDunManager.enableBluetooth();
                 }
                 // TODO: let user pick paired device; default to first paired
-                var devices = bluetoothDunManager.discoverPairedDevices();
+                java.util.List<android.bluetooth.BluetoothDevice> devices = bluetoothDunManager.discoverPairedDevices();
                 if (!devices.isEmpty()) {
                     bluetoothDunManager.setConnectedDevice(devices.get(0));
                 }
@@ -195,7 +203,7 @@ public class HostActivity extends AppCompatActivity {
     }
 
     private android.hardware.usb.UsbDevice pickFirstUsbDevice() {
-        var devices = usbTetherManager.discoverTetherDevices();
+        java.util.List<android.hardware.usb.UsbDevice> devices = usbTetherManager.discoverTetherDevices();
         return devices.isEmpty() ? null : devices.get(0);
     }
 

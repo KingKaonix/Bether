@@ -36,7 +36,7 @@ public class ConnectionStateMachine {
     });
 
     private int reconnectAttempt = 0;
-    private final int maxReconnectAttempts;
+    private int maxReconnectAttempts;
     private final long baseBackoffMs;
     private volatile boolean autoReconnect = true;
 
@@ -71,7 +71,7 @@ public class ConnectionStateMachine {
     }
 
     public void setMaxReconnectAttempts(int maxReconnectAttempts) {
-        this.maxReconnectAttempts = 0; // placeholder; field is final
+        this.maxReconnectAttempts = maxReconnectAttempts;
     }
 
     public void addListener(Listener listener) {
