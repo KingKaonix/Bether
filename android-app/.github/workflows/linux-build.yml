@@ -30,17 +30,19 @@ jobs:
 
       - name: Lint Linux client source
         run: |
-          flake8 tether-app/linux-client/src tether-app/linux-client/scripts tether-app/shared || true
+          flake8 tether-app/linux-client/src tether-app/linux-client/ui tether-app/tests tether-app/shared || true
 
       - name: Format check
         run: |
-          black --check tether-app/linux-client/src tether-app/linux-client/scripts tether-app/shared || true
+          black --check tether-app/linux-client/src tether-app/linux-client/ui tether-app/tests tether-app/shared || true
 
-      - name: Run Python tests
+      - name: Run Python unit tests
+        working-directory: tether-app
         run: |
-          pytest tether-app/linux-client/src -v || true
+          python -m pytest tests/ -v
 
       - name: Verify connection script syntax
         run: |
           bash -n tether-app/linux-client/scripts/connect.sh
           bash -n tether-app/linux-client/scripts/disconnect.sh
+          bash -n tether-app/linux-client/scripts/gui.sh

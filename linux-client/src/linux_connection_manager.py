@@ -45,9 +45,9 @@ class LinuxConnectionManager:
         self.base_backoff = base_backoff
 
         # Local imports to keep module import-light
-        from .socks5_client import Socks5Client
-        from .redsocks_manager import RedsocksManager
-        from .iptables_manager import IptablesManager
+        from socks5_client import Socks5Client
+        from redsocks_manager import RedsocksManager
+        from iptables_manager import IptablesManager
 
         self.socks_client = Socks5Client(
             host, port, username, password, timeout=10.0

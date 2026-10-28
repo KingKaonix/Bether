@@ -26,14 +26,21 @@ jobs:
           pip install pytest pyyaml
 
       - name: Run end-to-end integration tests
+        working-directory: tether-app
         run: |
-          pytest tether-app/tests/integration -v || echo "No integration tests found yet"
+          python -m pytest tests/integration -v
+
+      - name: Run full test suite
+        working-directory: tether-app
+        run: |
+          python -m pytest tests/ -v
 
       - name: Validate carrier bypass config
+        working-directory: tether-app
         run: |
           python - <<'PY'
           import sys
-          sys.path.insert(0, "tether-app/shared")
+          sys.path.insert(0, "shared")
           from models import CarrierBypassConfig
           cfg = CarrierBypassConfig()
           assert cfg.ttl_value == 65
@@ -43,3 +50,17 @@ jobs:
           assert cfg.mss_value == 1360
           print("Carrier bypass config OK")
           PY
+
+      - name: Security vulnerability scan (bandit)
+        working-directory: tether-app
+        run: |
+          pip install bandit || true
+          bandit -r linux-client/src shared -f txt -o bandit-report.txt || true
+          cat bandit-report.txt 2>/dev/null || true
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pytest-results
+          path: tether-app/.pytest_cache/

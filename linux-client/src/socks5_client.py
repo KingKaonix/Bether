@@ -134,11 +134,17 @@ class Socks5Client:
         addr = self._pack_address(host, port)
         req = struct.pack("BBB", SOCKS5_VER, CMD_CONNECT, 0x00) + addr
         self.sock.sendall(req)
-        resp = self.sock.recv(4)
+        resp = self.sock.recv(256)
         if len(resp) < 4 or resp[0] != SOCKS5_VER or resp[1] != REP_SUCCESS:
-            logger.error("SOCKS5 CONNECT failed: ver=%s rep=%s", resp[0:1], resp[1:2])
+            logger.error("SOCKS5 CONNECT failed: len=%s ver=%s rep=%s",
+                         len(resp), resp[0:1] if resp else None, resp[1:2] if len(resp) > 1 else None)
             return False
-        _, _, _ = self._parse_address(resp, 4)
+        atyp = resp[3]
+        bind_addr_bytes = self._read_bind_address_from_bytes(resp, atyp, 4)
+        if bind_addr_bytes is None:
+            logger.error("SOCKS5 CONNECT: failed to read bind address")
+            return False
+        _, _, _ = self._parse_address(resp, 3)
         logger.info("SOCKS5 CONNECT established to %s:%d", host, port)
         return True
 
@@ -151,9 +157,31 @@ class Socks5Client:
         if len(resp) < 4 or resp[0] != SOCKS5_VER or resp[1] != REP_SUCCESS:
             logger.error("SOCKS5 UDP ASSOCIATE failed")
             return None, None
-        host, port, _ = self._parse_address(resp, 4)
+        atyp = resp[3]
+        bind_addr_bytes = self._read_bind_address_from_bytes(resp, atyp, 4)
+        if bind_addr_bytes is None:
+            logger.error("SOCKS5 UDP ASSOCIATE: failed to read bind address")
+            return None, None
+        host, port, _ = self._parse_address(resp, 3)
         logger.info("SOCKS5 UDP associate relay: %s:%d", host, port)
         return host, port
+
+    def _read_bind_address_from_bytes(self, data: bytes, atyp: int, offset: int) -> Optional[bytes]:
+        """Extract the variable-length bind address from an already-received buffer."""
+        if atyp == ATYP_IPV4:
+            needed = offset + 6
+        elif atyp == 0x04:  # ATYP_IPV6
+            needed = offset + 18
+        elif atyp == 0x03:  # ATYP_DOMAIN
+            if len(data) < offset + 1:
+                return None
+            dlen = data[offset]
+            needed = offset + 1 + dlen + 2
+        else:
+            return None
+        if len(data) < needed:
+            return None
+        return data[offset:needed]
 
 
 def relay_loop(client_sock: socket.socket, remote_sock: socket.socket,
