@@ -1,7 +1,7 @@
 package com.tetherapp.net;
 
 import android.content.Context;
-import android.net.WifiManager;
+import android.net.wifi.WifiManager;
 import android.net.wifi.WifiConfiguration;
 import android.os.Build;
 import android.util.Log;
