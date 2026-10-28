@@ -96,7 +96,7 @@ public class PerformanceMonitor {
             if (dt > 0 && lastTimestamp != 0) {
                 double bpsSent = (tx - lastBytesSent) * 1000.0 / dt;
                 double bpsRecv = (rx - lastBytesRecv) * 1000.0 / dt;
-                BandwidthSample sample = new BandwidthSample(now / 1000.0,
+                BandwidthSample sample = new BandwidthSample(now,
                         tx - lastBytesSent, rx - lastBytesRecv, bpsSent, bpsRecv);
                 samples.add(sample);
                 if (samples.size() > maxSamples) {
