@@ -13,8 +13,9 @@ import java.util.UUID;
 
 /**
  * Manages Bluetooth Dial-Up Networking (DUN) for Bluetooth tethering.
+ * Implements {@link TetherInterface} for polymorphic transport handling.
  */
-public class BluetoothDunManager {
+public class BluetoothDunManager implements TetherInterface {
     private static final String TAG = "BluetoothDunManager";
 
     // Serial Port Profile UUID (commonly used for DUN)
@@ -25,7 +26,8 @@ public class BluetoothDunManager {
 
     private boolean dunActive = false;
     private BluetoothDevice connectedDevice;
-    private final List<DunListener> listeners = new ArrayList<>();
+    private final List<DunListener> dunListeners = new ArrayList<>();
+    private final List<TetherListener> tetherListeners = new ArrayList<>();
 
     public interface DunListener {
         void onDunStateChanged(boolean active, BluetoothDevice device);
@@ -37,6 +39,55 @@ public class BluetoothDunManager {
         this.context = context;
         this.bluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
     }
+
+    /* ---------- TetherInterface implementation ---------- */
+
+    @Override
+    public String getName() {
+        return "Bluetooth DUN";
+    }
+
+    @Override
+    public TetherMode getMode() {
+        return TetherMode.BLUETOOTH;
+    }
+
+    @Override
+    public boolean isTetheringActive() {
+        return dunActive;
+    }
+
+    @Override
+    public boolean startTethering() {
+        if (connectedDevice == null) {
+            Log.w(TAG, "No Bluetooth device selected for DUN");
+            notifyError("No Bluetooth device selected");
+            return false;
+        }
+        return startDun(connectedDevice);
+    }
+
+    @Override
+    public boolean stopTethering() {
+        return stopDun();
+    }
+
+    @Override
+    public void addListener(TetherListener listener) {
+        tetherListeners.add(listener);
+    }
+
+    @Override
+    public void removeListener(TetherListener listener) {
+        tetherListeners.remove(listener);
+    }
+
+    @Override
+    public void shutdown() {
+        stopDun();
+    }
+
+    /* ---------- Bluetooth-specific API ---------- */
 
     public boolean isBluetoothAvailable() {
         return bluetoothAdapter != null;
@@ -65,25 +116,30 @@ public class BluetoothDunManager {
             return false;
         }
         try {
+            this.connectedDevice = device;
             boolean connected = bluetoothAdapter.getProfileConnectionState(BluetoothProfile.HEADSET) == BluetoothProfile.STATE_CONNECTED
                     || bluetoothAdapter.getProfileConnectionState(BluetoothProfile.HEADSET) == BluetoothProfile.STATE_CONNECTING;
-            // DUN uses the serial port profile; attempt to connect via reflection if necessary
             dunActive = true;
-            connectedDevice = device;
+            notifyTetheringStarted();
             notifyDunStateChanged(true, device);
             Log.i(TAG, "Bluetooth DUN started for " + device.getName());
             return true;
         } catch (Exception e) {
             Log.e(TAG, "Failed to start Bluetooth DUN", e);
+            notifyError(e.getMessage());
             return false;
         }
     }
 
     public boolean stopDun() {
+        boolean wasActive = dunActive;
         dunActive = false;
         BluetoothDevice dev = connectedDevice;
         connectedDevice = null;
-        notifyDunStateChanged(false, dev);
+        if (wasActive) {
+            notifyTetheringStopped();
+            notifyDunStateChanged(false, dev);
+        }
         Log.i(TAG, "Bluetooth DUN stopped");
         return true;
     }
@@ -96,22 +152,16 @@ public class BluetoothDunManager {
         return connectedDevice;
     }
 
-    public void addListener(DunListener listener) {
-        listeners.add(listener);
+    public void setConnectedDevice(BluetoothDevice device) {
+        this.connectedDevice = device;
     }
 
-    public void removeListener(DunListener listener) {
-        listeners.remove(listener);
+    public void addDunListener(DunListener listener) {
+        dunListeners.add(listener);
     }
 
-    private void notifyDunStateChanged(boolean active, BluetoothDevice device) {
-        for (DunListener l : listeners) {
-            if (active) {
-                l.onDunStateChanged(true, device);
-            } else {
-                l.onDunStateChanged(false, device);
-            }
-        }
+    public void removeDunListener(DunListener listener) {
+        dunListeners.remove(listener);
     }
 
     public ParcelUuid[] getDeviceUuids(BluetoothDevice device) {
@@ -132,5 +182,33 @@ public class BluetoothDunManager {
             }
         }
         return false;
+    }
+
+    private void notifyTetheringStarted() {
+        for (TetherListener l : tetherListeners) {
+            l.onTetheringStarted(getName());
+        }
+    }
+
+    private void notifyTetheringStopped() {
+        for (TetherListener l : tetherListeners) {
+            l.onTetheringStopped(getName());
+        }
+    }
+
+    private void notifyError(String message) {
+        for (TetherListener l : tetherListeners) {
+            l.onError(getName(), message);
+        }
+    }
+
+    private void notifyDunStateChanged(boolean active, BluetoothDevice device) {
+        for (DunListener l : dunListeners) {
+            if (active) {
+                l.onDunStateChanged(true, device);
+            } else {
+                l.onDunStateChanged(false, device);
+            }
+        }
     }
 }

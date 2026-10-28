@@ -1,6 +1,11 @@
 package com.tetherapp.ui;
 
+import android.content.ComponentName;
+import android.content.Context;
+import android.content.Intent;
+import android.content.ServiceConnection;
 import android.os.Bundle;
+import android.os.IBinder;
 import android.util.Log;
 import android.widget.Button;
 import android.widget.Switch;
@@ -11,11 +16,13 @@ import com.tetherapp.R;
 import com.tetherapp.net.BluetoothDunManager;
 import com.tetherapp.net.CarrierBypassEngine;
 import com.tetherapp.net.ConnectionStateMachine;
-import com.tetherapp.net.NetworkInterfaceManager;
-import com.tetherapp.net.Socks5ProxyServer;
-import com.tetherapp.net.TunnelManager;
+import com.tetherapp.net.ProxyService;
+import com.tetherapp.net.TetherInterface;
 import com.tetherapp.net.UsbTetherManager;
 import com.tetherapp.net.WifiHotspotManager;
+
+import java.util.ArrayList;
+import java.util.List;
 
 public class HostActivity extends AppCompatActivity {
     private static final String TAG = "HostActivity";
@@ -23,11 +30,13 @@ public class HostActivity extends AppCompatActivity {
     private UsbTetherManager usbTetherManager;
     private WifiHotspotManager wifiHotspotManager;
     private BluetoothDunManager bluetoothDunManager;
-    private NetworkInterfaceManager networkInterfaceManager;
-    private Socks5ProxyServer socks5ProxyServer;
     private CarrierBypassEngine carrierBypassEngine;
     private ConnectionStateMachine connectionStateMachine;
-    private TunnelManager tunnelManager;
+
+    private ProxyService proxyService;
+    private boolean proxyBound = false;
+
+    private final List<TetherInterface> tetherTransports = new ArrayList<>();
 
     private Switch switchUsb;
     private Switch switchWifi;
@@ -37,6 +46,25 @@ public class HostActivity extends AppCompatActivity {
     private TextView tvStatus;
     private TextView tvBypassStatus;
 
+    private final ServiceConnection proxyServiceConnection = new ServiceConnection() {
+        @Override
+        public void onServiceConnected(ComponentName name, IBinder service) {
+            ProxyService.LocalBinder binder = (ProxyService.LocalBinder) service;
+            proxyService = binder.getService();
+            proxyBound = true;
+            Log.d(TAG, "Bound to ProxyService");
+            refreshStatus();
+        }
+
+        @Override
+        public void onServiceDisconnected(ComponentName name) {
+            proxyBound = false;
+            proxyService = null;
+            Log.d(TAG, "Unbound from ProxyService");
+            refreshStatus();
+        }
+    };
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -45,6 +73,7 @@ public class HostActivity extends AppCompatActivity {
         initManagers();
         bindViews();
         setupListeners();
+        bindProxyService();
         refreshStatus();
     }
 
@@ -52,47 +81,50 @@ public class HostActivity extends AppCompatActivity {
         usbTetherManager = new UsbTetherManager(this);
         wifiHotspotManager = new WifiHotspotManager(this);
         bluetoothDunManager = new BluetoothDunManager(this);
-        networkInterfaceManager = new NetworkInterfaceManager(this);
-        socks5ProxyServer = new Socks5ProxyServer(this, 1080, true);
+
+        tetherTransports.add(usbTetherManager);
+        tetherTransports.add(wifiHotspotManager);
+        tetherTransports.add(bluetoothDunManager);
+
+        for (TetherInterface transport : tetherTransports) {
+            transport.addListener(new TetherInterface.TetherListener() {
+                @Override
+                public void onTetheringStarted(String transportName) {
+                    Log.i(TAG, "Tethering started: " + transportName);
+                    runOnUiThread(HostActivity.this::refreshStatus);
+                }
+
+                @Override
+                public void onTetheringStopped(String transportName) {
+                    Log.i(TAG, "Tethering stopped: " + transportName);
+                    runOnUiThread(HostActivity.this::refreshStatus);
+                }
+
+                @Override
+                public void onError(String transportName, String message) {
+                    Log.e(TAG, "Tether error (" + transportName + "): " + message);
+                    runOnUiThread(() -> Toast.makeText(
+                            HostActivity.this, transportName + ": " + message, Toast.LENGTH_SHORT).show());
+                }
+            });
+        }
+
         carrierBypassEngine = new CarrierBypassEngine(this);
-        connectionStateMachine = new ConnectionStateMachine(10, 1000L);
-
-        connectionStateMachine.addListener((prev, current) -> {
-            Log.i(TAG, "Connection state: " + prev + " -> " + current);
-            runOnUiThread(this::refreshStatus);
-        });
-
         carrierBypassEngine.addListener((layer, state) -> {
             Log.d(TAG, "Bypass layer " + layer + " -> " + state);
             runOnUiThread(this::refreshBypassStatus);
         });
 
-        socks5ProxyServer.addListener(new Socks5ProxyServer.ProxyListener() {
-            @Override public void onProxyStarted(int port) {
-                Log.i(TAG, "SOCKS5 started on " + port);
-                runOnUiThread(HostActivity.this::refreshStatus);
-            }
-            @Override public void onProxyStopped() {
-                Log.i(TAG, "SOCKS5 stopped");
-                runOnUiThread(HostActivity.this::refreshStatus);
-            }
-            @Override public void onClientConnected(String clientAddress) {
-                Log.d(TAG, "Client connected: " + clientAddress);
-            }
-            @Override public void onClientDisconnected(String clientAddress) {
-                Log.d(TAG, "Client disconnected: " + clientAddress);
-            }
-            @Override public void onTcpRelay(String remoteHost, int remotePort, long bytes) {
-                Log.d(TAG, "TCP relay " + remoteHost + ":" + remotePort + " " + bytes + "B");
-            }
-            @Override public void onUdpRelay(String remoteHost, int remotePort, long bytes) {
-                Log.d(TAG, "UDP relay " + remoteHost + ":" + remotePort + " " + bytes + "B");
-            }
-            @Override public void onError(String message) {
-                Log.e(TAG, "Proxy error: " + message);
-                runOnUiThread(() -> Toast.makeText(HostActivity.this, message, Toast.LENGTH_SHORT).show());
-            }
+        connectionStateMachine = new ConnectionStateMachine(10, 1000L);
+        connectionStateMachine.addListener((prev, current) -> {
+            Log.i(TAG, "Connection state: " + prev + " -> " + current);
+            runOnUiThread(this::refreshStatus);
         });
+    }
+
+    private void bindProxyService() {
+        Intent intent = new Intent(this, ProxyService.class);
+        bindService(intent, proxyServiceConnection, Context.BIND_AUTO_CREATE);
     }
 
     private void bindViews() {
@@ -116,9 +148,9 @@ public class HostActivity extends AppCompatActivity {
 
         switchWifi.setOnCheckedChangeListener((buttonView, isChecked) -> {
             if (isChecked) {
-                wifiHotspotManager.startHotspot();
+                wifiHotspotManager.startTethering();
             } else {
-                wifiHotspotManager.stopHotspot();
+                wifiHotspotManager.stopTethering();
             }
         });
 
@@ -127,22 +159,34 @@ public class HostActivity extends AppCompatActivity {
                 if (!bluetoothDunManager.isBluetoothEnabled()) {
                     bluetoothDunManager.enableBluetooth();
                 }
+                // TODO: let user pick paired device; default to first paired
+                var devices = bluetoothDunManager.discoverPairedDevices();
+                if (!devices.isEmpty()) {
+                    bluetoothDunManager.setConnectedDevice(devices.get(0));
+                }
             } else {
-                bluetoothDunManager.stopDun();
+                bluetoothDunManager.stopTethering();
             }
         });
 
         switchProxy.setOnCheckedChangeListener((buttonView, isChecked) -> {
             if (isChecked) {
-                socks5ProxyServer.start();
+                if (proxyBound && proxyService != null) {
+                    proxyService.startProxy(ProxyService.DEFAULT_PORT, true);
+                } else {
+                    Toast.makeText(this, "Proxy service not ready", Toast.LENGTH_SHORT).show();
+                }
             } else {
-                socks5ProxyServer.stop();
+                if (proxyBound && proxyService != null) {
+                    proxyService.stopProxy();
+                }
             }
+            refreshStatus();
         });
 
         switchBypass.setOnCheckedChangeListener((buttonView, isChecked) -> {
             if (isChecked) {
-                applyCarrierBypass();
+                carrierBypassEngine.applyAll();
             } else {
                 carrierBypassEngine.disableAll();
             }
@@ -150,21 +194,18 @@ public class HostActivity extends AppCompatActivity {
         });
     }
 
-    private void applyCarrierBypass() {
-        carrierBypassEngine.applyTtlNormalization(CarrierBypassEngine.DEFAULT_TTL);
-        carrierBypassEngine.applyIpv6Blocking();
-        carrierBypassEngine.applyDnsLeakPrevention();
-        carrierBypassEngine.applyOsUpdateDomainBlocking();
-        carrierBypassEngine.applyMssMtuClamping(CarrierBypassEngine.DEFAULT_MSS, 1400);
-        carrierBypassEngine.applyTrafficShaping();
-        carrierBypassEngine.dumpStatus();
+    private android.hardware.usb.UsbDevice pickFirstUsbDevice() {
+        var devices = usbTetherManager.discoverTetherDevices();
+        return devices.isEmpty() ? null : devices.get(0);
     }
 
     private void refreshStatus() {
         StringBuilder sb = new StringBuilder();
         sb.append("USB: ").append(usbTetherManager.isTetheringActive() ? "ON" : "off").append("\n");
-        sb.append("WiFi: ").append(wifiHotspotManager.isHotspotActive() ? "ON" : "off").append("\n");
-        sb.append("Proxy: ").append(socks5ProxyServer.isRunning() ? "ON (" + socks5ProxyServer.getListenPort() + ")" : "off");
+        sb.append("WiFi: ").append(wifiHotspotManager.isTetheringActive() ? "ON" : "off").append("\n");
+        sb.append("BT: ").append(bluetoothDunManager.isTetheringActive() ? "ON" : "off").append("\n");
+        boolean proxyRunning = proxyBound && proxyService != null && proxyService.isProxyRunning();
+        sb.append("Proxy: ").append(proxyRunning ? "ON (" + ProxyService.DEFAULT_PORT + ")" : "off");
         tvStatus.setText(sb.toString());
     }
 
@@ -181,20 +222,17 @@ public class HostActivity extends AppCompatActivity {
         tvBypassStatus.setText(sb.toString());
     }
 
-    private android.hardware.usb.UsbDevice pickFirstUsbDevice() {
-        var devices = usbTetherManager.discoverTetherDevices();
-        return devices.isEmpty() ? null : devices.get(0);
-    }
-
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        socks5ProxyServer.stop();
-        wifiHotspotManager.stopHotspot();
-        usbTetherManager.stopTethering();
-        bluetoothDunManager.stopDun();
+        if (proxyBound) {
+            unbindService(proxyServiceConnection);
+            proxyBound = false;
+        }
+        for (TetherInterface transport : tetherTransports) {
+            transport.shutdown();
+        }
         carrierBypassEngine.disableAll();
         connectionStateMachine.shutdown();
-        usbTetherManager.shutdown();
     }
 }

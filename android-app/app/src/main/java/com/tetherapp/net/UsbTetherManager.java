@@ -19,9 +19,9 @@ import java.util.Map;
 
 /**
  * Manages USB tethering via {@link UsbManager} and {@link ConnectivityManager}.
- * Discovers tether-capable USB interfaces and requests tethering.
+ * Implements {@link TetherInterface} for polymorphic transport handling.
  */
-public class UsbTetherManager {
+public class UsbTetherManager implements TetherInterface {
     private static final String TAG = "UsbTetherManager";
 
     private final Context context;
@@ -32,7 +32,8 @@ public class UsbTetherManager {
 
     private boolean tetheringActive = false;
     private UsbDevice tetherDevice;
-    private final List<UsbTetherListener> listeners = new ArrayList<>();
+    private final List<UsbTetherListener> usbListeners = new ArrayList<>();
+    private final List<TetherListener> tetherListeners = new ArrayList<>();
 
     public interface UsbTetherListener {
         void onUsbTetherStateChanged(boolean active, UsbDevice device);
@@ -49,6 +50,78 @@ public class UsbTetherManager {
         this.workerHandler = new Handler(workerThread.getLooper());
     }
 
+    /* ---------- TetherInterface implementation ---------- */
+
+    @Override
+    public String getName() {
+        return "USB";
+    }
+
+    @Override
+    public TetherMode getMode() {
+        return TetherMode.USB;
+    }
+
+    @Override
+    public boolean isTetheringActive() {
+        return tetheringActive;
+    }
+
+    @Override
+    public boolean startTethering() {
+        if (usbManager == null || connectivityManager == null || tetherDevice == null) {
+            return false;
+        }
+        if (!usbManager.hasPermission(tetherDevice)) {
+            Log.w(TAG, "No USB permission for device: " + tetherDevice.getDeviceName());
+            notifyError("No USB permission for device");
+            return false;
+        }
+        try {
+            tetheringActive = true;
+            notifyTetheringStarted();
+            notifyUsbTetherStateChanged(true, tetherDevice);
+            Log.i(TAG, "USB tethering requested for " + tetherDevice.getDeviceName());
+            return true;
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to request USB tethering", e);
+            notifyError(e.getMessage());
+            return false;
+        }
+    }
+
+    @Override
+    public boolean stopTethering() {
+        boolean wasActive = tetheringActive;
+        tetheringActive = false;
+        UsbDevice dev = tetherDevice;
+        tetherDevice = null;
+        if (wasActive) {
+            notifyTetheringStopped();
+            notifyUsbTetherStateChanged(false, dev);
+        }
+        Log.i(TAG, "USB tethering stopped");
+        return true;
+    }
+
+    @Override
+    public void addListener(TetherListener listener) {
+        tetherListeners.add(listener);
+    }
+
+    @Override
+    public void removeListener(TetherListener listener) {
+        tetherListeners.remove(listener);
+    }
+
+    @Override
+    public void shutdown() {
+        stopTethering();
+        workerThread.quitSafely();
+    }
+
+    /* ---------- USB-specific API ---------- */
+
     public List<UsbDevice> discoverTetherDevices() {
         if (usbManager == null) {
             return new ArrayList<>();
@@ -60,63 +133,20 @@ public class UsbTetherManager {
     }
 
     public boolean requestTethering(UsbDevice device) {
-        if (usbManager == null || connectivityManager == null || device == null) {
-            return false;
-        }
-        if (!usbManager.hasPermission(device)) {
-            Log.w(TAG, "No USB permission for device: " + device.getDeviceName());
-            return false;
-        }
-        try {
-            tetherDevice = device;
-            tetheringActive = true;
-            notifyTetherStateChanged(true, device);
-            Log.i(TAG, "USB tethering requested for " + device.getDeviceName());
-            return true;
-        } catch (Exception e) {
-            Log.e(TAG, "Failed to request USB tethering", e);
-            return false;
-        }
-    }
-
-    public boolean stopTethering() {
-        tetheringActive = false;
-        UsbDevice dev = tetherDevice;
-        tetherDevice = null;
-        notifyTetherStateChanged(false, dev);
-        Log.i(TAG, "USB tethering stopped");
-        return true;
-    }
-
-    public boolean isTetheringActive() {
-        return tetheringActive;
+        this.tetherDevice = device;
+        return startTethering();
     }
 
     public boolean isDeviceTetherable(UsbDevice device) {
         return device != null && device.getInterfaceCount() > 0;
     }
 
-    public void addListener(UsbTetherListener listener) {
-        listeners.add(listener);
+    public void addUsbListener(UsbTetherListener listener) {
+        usbListeners.add(listener);
     }
 
-    public void removeListener(UsbTetherListener listener) {
-        listeners.remove(listener);
-    }
-
-    private void notifyTetherStateChanged(boolean active, UsbDevice device) {
-        for (UsbTetherListener l : listeners) {
-            if (active) {
-                l.onUsbTetherStateChanged(true, device);
-            } else {
-                l.onUsbTetherStateChanged(false, device);
-            }
-        }
-    }
-
-    public void shutdown() {
-        stopTethering();
-        workerThread.quitSafely();
+    public void removeUsbListener(UsbTetherListener listener) {
+        usbListeners.remove(listener);
     }
 
     public NetworkCapabilities getActiveNetworkCapabilities() {
@@ -133,5 +163,35 @@ public class UsbTetherManager {
         }
         Network network = connectivityManager.getActiveNetwork();
         return network != null ? connectivityManager.getLinkProperties(network) : null;
+    }
+
+    /* ---------- Notification helpers ---------- */
+
+    private void notifyTetheringStarted() {
+        for (TetherListener l : tetherListeners) {
+            l.onTetheringStarted(getName());
+        }
+    }
+
+    private void notifyTetheringStopped() {
+        for (TetherListener l : tetherListeners) {
+            l.onTetheringStopped(getName());
+        }
+    }
+
+    private void notifyError(String message) {
+        for (TetherListener l : tetherListeners) {
+            l.onError(getName(), message);
+        }
+    }
+
+    private void notifyUsbTetherStateChanged(boolean active, UsbDevice device) {
+        for (UsbTetherListener l : usbListeners) {
+            if (active) {
+                l.onUsbTetherStateChanged(true, device);
+            } else {
+                l.onUsbTetherStateChanged(false, device);
+            }
+        }
     }
 }

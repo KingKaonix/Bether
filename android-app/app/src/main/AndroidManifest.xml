@@ -89,6 +89,11 @@
             android:exported="false"
             android:foregroundServiceType="dataSync" />
 
+        <!-- SOCKS5 proxy service (runs independently of UI) -->
+        <service
+            android:name=".net.ProxyService"
+            android:exported="false" />
+
         <receiver
             android:name=".net.NetworkStateReceiver"
             android:exported="false">
