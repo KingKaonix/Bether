@@ -1,0 +1,63 @@
+name: Release rc-1.0
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release candidate version"
+        required: true
+        default: "rc-1.0"
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Validate Gradle wrapper
+        uses: gradle/wrapper-validation-action@v1
+
+      - name: Build Android release APK
+        working-directory: tether-app/android-app
+        run: ./gradlew assembleRelease
+
+      - name: Set git identity
+        run: |
+          git config user.name "opencode"
+          git config user.email "opencode@local"
+
+      - name: Create release tag
+        run: |
+          TAG="${{ github.event.inputs.version }}"
+          git tag -a "$TAG" -m "Release candidate $TAG"
+          git push origin "$TAG"
+
+      - name: Create GitHub Release and upload APK
+        uses: softprops/action-gh-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: "${{ github.event.inputs.version }}"
+          name: "TetherApp ${{ github.event.inputs.version }}"
+          body: |
+            # TetherApp ${{ github.event.inputs.version }}
+
+            ## What's included
+            - Android host: USB/WiFi/Bluetooth tethering, SOCKS5 proxy (TCP + UDP), VpnService tunnel
+            - Carrier bypass engine (6-layer): TTL=65, IPv6 blocking, DNS leak prevention,
+              OS update domain blocking, MSS/MTU clamping, traffic shaping
+            - Linux client: redsocks transparent proxy, iptables NAT/mangle, GTK3 cyberpunk GUI
+            - Shared data models + utils (Python)
+            - CI/CD: Android build, Linux build, integration tests, security scan
+          draft: false
+          prerelease: true
+          files: tether-app/android-app/app/build/outputs/apk/release/app-release.apk
