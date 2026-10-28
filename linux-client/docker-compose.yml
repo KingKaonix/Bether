@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  linux-client-test:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - .:/app
+      - ../tests:/app/tests
+      - ../shared:/app/shared
+    command: pytest /app/tests/linux_client /app/tests/shared
+    cap_add:
+      - NET_ADMIN

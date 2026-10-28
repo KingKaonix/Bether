@@ -45,6 +45,9 @@ class Socks5Client:
         self.timeout = timeout
         self.sock: Optional[socket.socket] = None
         self._lock = threading.Lock()
+        self.total_bytes_sent = 0
+        self.total_bytes_recv = 0
+        self._stats_lock = threading.Lock()
 
     def connect(self) -> bool:
         try:
@@ -185,7 +188,7 @@ class Socks5Client:
 
 
 def relay_loop(client_sock: socket.socket, remote_sock: socket.socket,
-               stop_event: threading.Event) -> None:
+               stop_event: threading.Event, client: Optional[Socks5Client] = None) -> None:
     """Bidirectional relay between two sockets until stop_event is set."""
     sockets = [client_sock, remote_sock]
     while not stop_event.is_set():
@@ -200,6 +203,12 @@ def relay_loop(client_sock: socket.socket, remote_sock: socket.socket,
             target = remote_sock if s is client_sock else client_sock
             try:
                 target.sendall(data)
+                if client is not None:
+                    with client._stats_lock:
+                        if target is remote_sock:
+                            client.total_bytes_sent += len(data)
+                        else:
+                            client.total_bytes_recv += len(data)
             except OSError:
                 return
         for s in exceptional:
@@ -228,7 +237,7 @@ def forward_tcp(local_port: int, remote_host: str, remote_port: int,
             conn.close()
             continue
         ev = threading.Event()
-        t1 = threading.Thread(target=relay_loop, args=(conn, client.sock, ev), daemon=True)
-        t2 = threading.Thread(target=relay_loop, args=(client.sock, conn, ev), daemon=True)
+        t1 = threading.Thread(target=relay_loop, args=(conn, client.sock, ev, client), daemon=True)
+        t2 = threading.Thread(target=relay_loop, args=(client.sock, conn, ev, client), daemon=True)
         t1.start()
         t2.start()

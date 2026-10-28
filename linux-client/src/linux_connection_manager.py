@@ -28,7 +28,7 @@ class LinuxConnectionManager:
 
     def __init__(
         self,
-        host: str,
+        host: Optional[str] = None,
         port: int = 1080,
         username: Optional[str] = None,
         password: Optional[str] = None,
@@ -36,6 +36,15 @@ class LinuxConnectionManager:
         max_reconnect_attempts: int = 10,
         base_backoff: float = 2.0,
     ):
+        from config_manager import ConfigManager
+        cfg = ConfigManager.load()
+        if not host or host == "127.0.0.1":
+            host = cfg.get("host", "127.0.0.1")
+        if port == 1080 and cfg.get("port"):
+            port = int(cfg.get("port", 1080))
+        if not username and cfg.get("username"):
+            username = cfg.get("username")
+
         self.host = host
         self.port = port
         self.username = username
@@ -106,6 +115,13 @@ class LinuxConnectionManager:
         self.start_time = time.time()
         self.state = LinuxConnectionState.CONNECTED
         logger.info("Linux client connected to %s:%d", self.host, self.port)
+
+        try:
+            from config_manager import ConfigManager
+            ConfigManager.save(self.host, self.port, self.username)
+        except Exception as exc:
+            logger.debug("Failed to save config on connect: %s", exc)
+
         return True
 
     def disconnect(self) -> None:
@@ -148,9 +164,12 @@ class LinuxConnectionManager:
     def stop(self) -> None:
         self.disconnect()
 
-    # ------------------------------------------------------------------ #
-    # Status
-    # ------------------------------------------------------------------ #
+    def get_bandwidth_stats(self) -> tuple[int, int]:
+        """Returns (total_bytes_sent, total_bytes_recv)."""
+        if hasattr(self, "socks_client") and self.socks_client:
+            with self.socks_client._stats_lock:
+                return self.socks_client.total_bytes_sent, self.socks_client.total_bytes_recv
+        return 0, 0
     def get_status(self) -> dict:
         return {
             "state": self.state.value,
