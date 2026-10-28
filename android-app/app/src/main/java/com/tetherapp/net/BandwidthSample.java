@@ -4,11 +4,11 @@ package com.tetherapp.net;
  * Represents a bandwidth sampling point with timestamp and transfer statistics.
  */
 public class BandwidthSample {
-    private final long timestamp;
-    private final long bytesSent;
-    private final long bytesReceived;
-    private final double bitsPerSecondSent;
-    private final double bitsPerSecondReceived;
+    public final long timestamp;
+    public final long bytesSent;
+    public final long bytesReceived;
+    public final double bitsPerSecondSent;
+    public final double bitsPerSecondReceived;
 
     public BandwidthSample(long timestamp, long bytesSent, long bytesReceived, double bitsPerSecondSent, double bitsPerSecondReceived) {
         this.timestamp = timestamp;

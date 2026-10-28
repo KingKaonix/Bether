@@ -9,11 +9,12 @@ import android.util.Log;
 
 public class NetworkStateReceiver extends BroadcastReceiver {
     private static final String TAG = "NetworkStateReceiver";
+    private static final String ACTION_CONNECTIVITY_CHANGE = "android.net.conn.CONNECTIVITY_CHANGE";
 
     @Override
     public void onReceive(Context context, Intent intent) {
         String action = intent.getAction();
-        if (ConnectivityManager.CONNECTIVITY_CHANGE.equals(action)) {
+        if (ACTION_CONNECTIVITY_CHANGE.equals(action)) {
             ConnectivityManager cm = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
             NetworkInfo info = cm != null ? cm.getActiveNetworkInfo() : null;
             Log.d(TAG, "Network changed: " + (info != null ? info.getTypeName() : "none"));
