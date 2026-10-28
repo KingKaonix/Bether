@@ -606,15 +606,16 @@ public class Socks5ProxyServer {
                 default:
                     return;
             }
-            byte[] payload = new byte[data.length - pos];
-            System.arraycopy(data, pos, payload, 0, payload.length);
+            final byte[] finalPayload = new byte[data.length - pos];
+            System.arraycopy(data, pos, finalPayload, 0, finalPayload.length);
+            final InetSocketAddress finalRemoteAddr = remoteAddr;
 
             executor.execute(() -> {
                 try {
-                    if (udpChannel != null && remoteAddr != null) {
-                        udpChannel.send(ByteBuffer.wrap(payload), remoteAddr);
+                    if (udpChannel != null && finalRemoteAddr != null) {
+                        udpChannel.send(ByteBuffer.wrap(finalPayload), finalRemoteAddr);
                         for (ProxyListener l : listeners) {
-                            l.onUdpRelay(remoteAddr.getHostName(), remoteAddr.getPort(), payload.length);
+                            l.onUdpRelay(finalRemoteAddr.getHostName(), finalRemoteAddr.getPort(), finalPayload.length);
                         }
                     }
                 } catch (IOException e) {
