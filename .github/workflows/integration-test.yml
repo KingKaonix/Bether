@@ -11,6 +11,7 @@ on:
 jobs:
   integration:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -26,17 +27,14 @@ jobs:
           pip install pytest pyyaml
 
       - name: Run end-to-end integration tests
-        working-directory: tether-app
         run: |
           python -m pytest tests/integration -v
 
       - name: Run full test suite
-        working-directory: tether-app
         run: |
           python -m pytest tests/ -v
 
       - name: Validate carrier bypass config
-        working-directory: tether-app
         run: |
           python - <<'PY'
           import sys
@@ -52,7 +50,6 @@ jobs:
           PY
 
       - name: Security vulnerability scan (bandit)
-        working-directory: tether-app
         run: |
           pip install bandit || true
           bandit -r linux-client/src shared -f txt -o bandit-report.txt || true
@@ -63,4 +60,4 @@ jobs:
         if: always()
         with:
           name: pytest-results
-          path: tether-app/.pytest_cache/
+          path: .pytest_cache/

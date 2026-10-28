@@ -30,7 +30,6 @@ jobs:
           wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
           unzip -q commandlinetools-linux-11076708_latest.zip -d $HOME/android-sdk/cmdline-tools
           mv $HOME/android-sdk/cmdline-tools/cmdline-tools $HOME/android-sdk/cmdline-tools/latest
-          export PATH="$HOME/android-sdk/cmdline-tools/latest/bin:$PATH"
           echo "ANDROID_HOME=$HOME/android-sdk" >> $GITHUB_ENV
           echo "$HOME/android-sdk/cmdline-tools/latest/bin" >> $GITHUB_PATH
           echo "$HOME/android-sdk/platform-tools" >> $GITHUB_PATH
@@ -45,19 +44,19 @@ jobs:
           echo "$PWD/gradle-8.2/bin" >> $GITHUB_PATH
 
       - name: Build Android debug APK
-        working-directory: tether-app/android-app
+        working-directory: android-app
         run: ./gradlew assembleDebug
 
       - name: Run unit tests
-        working-directory: tether-app/android-app
+        working-directory: android-app
         run: ./gradlew testDebugUnitTest
 
       - name: Lint (debug)
-        working-directory: tether-app/android-app
+        working-directory: android-app
         run: ./gradlew lintDebug
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: tether-app-debug-api-${{ matrix.api-level }}
-          path: tether-app/android-app/app/build/outputs/apk/debug/*.apk
+          path: android-app/app/build/outputs/apk/debug/*.apk

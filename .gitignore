@@ -9,6 +9,10 @@
 /.cxx/
 /.externalNativeBuild/
 
+# Release signing (gitignored - generated at CI runtime from secrets)
+android-app/app/signing.properties
+android-app/app/release-keystore.jks
+
 # IDE
 .idea/
 *.iml
@@ -26,3 +30,6 @@ venv/
 # OS
 .DS_Store
 Thumbs.db
+
+# Plan docs (kept in repo for reference)
+PLAN.md
