@@ -31,5 +31,6 @@ venv/
 .DS_Store
 Thumbs.db
 
-# Plan docs (kept in repo for reference)
-PLAN.md
+# Signing keys
+release-keystore.jks
+keystore-base64.txt

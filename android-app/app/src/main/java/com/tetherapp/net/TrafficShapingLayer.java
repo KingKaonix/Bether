@@ -11,11 +11,13 @@ public class TrafficShapingLayer implements BypassLayer {
 
     private static final String TAG = "TrafficShapingLayer";
     private final Context context;
+    private final CarrierBypassEngine.RootExecutor rootExecutor;
     private final boolean isRoot;
     private LayerState state = LayerState.DISABLED;
 
-    public TrafficShapingLayer(Context context) {
+    public TrafficShapingLayer(Context context, CarrierBypassEngine.RootExecutor rootExecutor) {
         this.context = context;
+        this.rootExecutor = rootExecutor;
         this.isRoot = isRootAvailable();
     }
 
@@ -42,8 +44,14 @@ public class TrafficShapingLayer implements BypassLayer {
     @Override
     public LayerState apply() {
         if (isRoot) {
-            state = LayerState.ACTIVE;
-            Log.i(TAG, "Traffic shaping activated (placeholder)");
+            boolean ok = rootExecutor != null && rootExecutor.executeRootCommand(
+                    "Traffic Shaping Activation",
+                    () -> {
+                        Log.i(TAG, "Traffic shaping activated (placeholder)");
+                        return true;
+                    }
+            );
+            state = ok ? LayerState.ACTIVE : LayerState.FAILED;
         } else {
             state = LayerState.DEGRADED;
             Log.w(TAG, "Traffic shaping degraded (no root)");

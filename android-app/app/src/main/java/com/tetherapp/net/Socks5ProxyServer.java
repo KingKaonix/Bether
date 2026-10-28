@@ -15,16 +15,20 @@ import java.nio.ByteBuffer;
 import java.nio.channels.DatagramChannel;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
-import java.nio.channels.ServerSocketChannel;
-import java.nio.channels.SocketChannel;
 import java.util.Iterator;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.UUID;
 
 /**
  * SOCKS5 proxy server with TCP CONNECT and UDP ASSOCIATE support.
  * Modeled on SocksDroid architecture: accepts client connections, performs
  * SOCKS5 handshake/auth, then relays TCP or forwards UDP via badvpn-udpgw.
+ *
+ * Security hardening:
+ * - Binds to localhost (127.0.0.1) by default to prevent unauthorized access from other network devices.
+ * - Requires SOCKS5 username/password authentication by default. No-auth mode should only be used on trusted networks.
+ * - Supports optional TLS server socket wrapping (tlsEnabled flag with TODO to make default true in production).
  */
 public class Socks5ProxyServer {
     private static final String TAG = "Socks5ProxyServer";
@@ -44,6 +48,11 @@ public class Socks5ProxyServer {
     private final Context context;
     private final int listenPort;
     private final boolean udpEnabled;
+    private final String bindAddress;
+    private final boolean authRequired;
+    private final String username;
+    private final String password;
+    private final boolean tlsEnabled; // TODO: make default true in production
 
     private ServerSocket serverSocket;
     private DatagramChannel udpChannel;
@@ -66,10 +75,36 @@ public class Socks5ProxyServer {
 
     private final java.util.List<ProxyListener> listeners = new java.util.ArrayList<>();
 
+    /**
+     * Constructs a SOCKS5 proxy server bound to localhost (127.0.0.1) with authentication required by default.
+     */
     public Socks5ProxyServer(Context context, int listenPort, boolean udpEnabled) {
+        this(context, listenPort, udpEnabled, "127.0.0.1", true, "tether", generateRandomPassword(), false);
+    }
+
+    /**
+     * Constructs a SOCKS5 proxy server with configurable bind address, authentication, credentials, and TLS support.
+     *
+     * @param context Android context
+     * @param listenPort Port to listen on
+     * @param udpEnabled Whether UDP associate is enabled
+     * @param bindAddress IP address to bind to (default "127.0.0.1" for security; "0.0.0.0" for LAN access)
+     * @param authRequired Whether SOCKS5 username/password authentication is required (default true)
+     * @param username Proxy username
+     * @param password Proxy password (auto-generated if null/empty)
+     * @param tlsEnabled Whether TLS is enabled on the server socket (default false, TODO: make true)
+     */
+    public Socks5ProxyServer(Context context, int listenPort, boolean udpEnabled,
+                             String bindAddress, boolean authRequired,
+                             String username, String password, boolean tlsEnabled) {
         this.context = context;
         this.listenPort = listenPort;
         this.udpEnabled = udpEnabled;
+        this.bindAddress = bindAddress != null ? bindAddress : "127.0.0.1";
+        this.authRequired = authRequired;
+        this.username = username != null && !username.isEmpty() ? username : "tether";
+        this.password = password != null && !password.isEmpty() ? password : generateRandomPassword();
+        this.tlsEnabled = tlsEnabled;
         this.executor = Executors.newCachedThreadPool(r -> {
             Thread t = new Thread(r, "socks5-relay");
             t.setDaemon(true);
@@ -77,14 +112,57 @@ public class Socks5ProxyServer {
         });
     }
 
+    private static String generateRandomPassword() {
+        return UUID.randomUUID().toString().replace("-", "").substring(0, 12);
+    }
+
+    public String getPassword() {
+        return password;
+    }
+
+    public String getUsername() {
+        return username;
+    }
+
+    public boolean isAuthRequired() {
+        return authRequired;
+    }
+
+    public String getBindAddress() {
+        return bindAddress;
+    }
+
+    public boolean isTlsEnabled() {
+        return tlsEnabled;
+    }
+
     public boolean start() {
         if (running) {
             return true;
         }
         try {
-            serverSocket = new ServerSocket();
-            serverSocket.setReuseAddress(true);
-            serverSocket.bind(new InetSocketAddress(listenPort));
+            if (tlsEnabled) {
+                try {
+                    // TODO: Make tlsEnabled default true in production.
+                    javax.net.ssl.SSLContext sslContext = javax.net.ssl.SSLContext.getDefault();
+                    javax.net.ssl.SSLServerSocketFactory ssf = sslContext.getServerSocketFactory();
+                    javax.net.ssl.SSLServerSocket sslServerSocket = (javax.net.ssl.SSLServerSocket) ssf.createServerSocket();
+                    sslServerSocket.setReuseAddress(true);
+                    sslServerSocket.bind(new InetSocketAddress(bindAddress, listenPort));
+                    serverSocket = sslServerSocket;
+                    Log.i(TAG, "SOCKS5 proxy started with TLS on " + bindAddress + ":" + listenPort);
+                } catch (Exception e) {
+                    Log.e(TAG, "Failed to start TLS server socket, falling back to plain TCP", e);
+                    serverSocket = new ServerSocket();
+                    serverSocket.setReuseAddress(true);
+                    serverSocket.bind(new InetSocketAddress(bindAddress, listenPort));
+                }
+            } else {
+                serverSocket = new ServerSocket();
+                serverSocket.setReuseAddress(true);
+                serverSocket.bind(new InetSocketAddress(bindAddress, listenPort));
+                Log.i(TAG, "SOCKS5 proxy started on " + bindAddress + ":" + listenPort + " (Auth=" + authRequired + ")");
+            }
             running = true;
 
             acceptThread = new Thread(this::acceptLoop, "socks5-accept");
@@ -95,7 +173,6 @@ public class Socks5ProxyServer {
                 startUdp();
             }
 
-            Log.i(TAG, "SOCKS5 proxy started on port " + listenPort + " (UDP=" + udpEnabled + ")");
             for (ProxyListener l : listeners) {
                 l.onProxyStarted(listenPort);
             }
@@ -203,20 +280,40 @@ public class Socks5ProxyServer {
             if (!readFull(in, nMethods)) {
                 return;
             }
+
             boolean supportsNoAuth = false;
+            boolean supportsUserPass = false;
             for (byte b : methods) {
                 if (b == 0x00) {
                     supportsNoAuth = true;
-                    break;
+                } else if (b == 0x02) {
+                    supportsUserPass = true;
                 }
             }
-            if (!supportsNoAuth) {
-                out.write(new byte[]{SOCKS5_VERSION, 0xFF});
-                out.flush();
-                return;
+
+            if (authRequired) {
+                if (supportsUserPass) {
+                    out.write(new byte[]{SOCKS5_VERSION, 0x02});
+                    out.flush();
+                    if (!performUserPassAuth(in, out)) {
+                        return;
+                    }
+                } else {
+                    out.write(new byte[]{SOCKS5_VERSION, (byte) 0xFF});
+                    out.flush();
+                    return;
+                }
+            } else {
+                // NOTE: No-auth mode (0x00) should only be used on trusted networks.
+                if (supportsNoAuth) {
+                    out.write(new byte[]{SOCKS5_VERSION, 0x00});
+                    out.flush();
+                } else {
+                    out.write(new byte[]{SOCKS5_VERSION, (byte) 0xFF});
+                    out.flush();
+                    return;
+                }
             }
-            out.write(new byte[]{SOCKS5_VERSION, 0x00});
-            out.flush();
 
             // Request: VER, CMD, RSV, ATYP, ADDR, PORT
             if (!readFull(in, 4)) {
@@ -273,6 +370,43 @@ public class Socks5ProxyServer {
             for (ProxyListener l : listeners) {
                 l.onClientDisconnected(clientAddr);
             }
+        }
+    }
+
+    private boolean performUserPassAuth(InputStream in, OutputStream out) throws IOException {
+        int ver = in.read();
+        if (ver != 0x01) {
+            out.write(new byte[]{0x01, 0x01});
+            out.flush();
+            return false;
+        }
+        int ulen = in.read();
+        if (ulen < 0 || !readFull(in, ulen)) {
+            out.write(new byte[]{0x01, 0x01});
+            out.flush();
+            return false;
+        }
+        byte[] unameBytes = in.readNBytes(ulen);
+        String clientUser = new String(unameBytes, "UTF-8");
+
+        int plen = in.read();
+        if (plen < 0 || !readFull(in, plen)) {
+            out.write(new byte[]{0x01, 0x01});
+            out.flush();
+            return false;
+        }
+        byte[] passBytes = in.readNBytes(plen);
+        String clientPass = new String(passBytes, "UTF-8");
+
+        boolean authenticated = this.username.equals(clientUser) && this.password.equals(clientPass);
+        if (authenticated) {
+            out.write(new byte[]{0x01, 0x00});
+            out.flush();
+            return true;
+        } else {
+            out.write(new byte[]{0x01, 0x01});
+            out.flush();
+            return false;
         }
     }
 
@@ -392,7 +526,7 @@ public class Socks5ProxyServer {
         selector = Selector.open();
         udpChannel = DatagramChannel.open();
         udpChannel.configureBlocking(false);
-        udpChannel.bind(new InetSocketAddress(listenPort));
+        udpChannel.bind(new InetSocketAddress(bindAddress, listenPort));
         udpChannel.register(selector, SelectionKey.OP_READ);
 
         udpThread = new Thread(this::udpLoop, "socks5-udp");
@@ -425,7 +559,6 @@ public class Socks5ProxyServer {
                             buf.flip();
                             byte[] data = new byte[len];
                             buf.get(data);
-                            // Forward UDP payload to destination (parsed as SOCKS5 UDP header)
                             forwardUdpPacket(data, clientAddr);
                         }
                     }
@@ -439,11 +572,10 @@ public class Socks5ProxyServer {
     }
 
     private void forwardUdpPacket(byte[] data, SocketAddress clientAddr) {
-        // Minimal SOCKS5 UDP header parse: RSV(2), FRAG(1), ATYP, ADDR, PORT, DATA
         if (data.length < 7) {
             return;
         }
-        int pos = 3; // skip RSV + FRAG
+        int pos = 3;
         int atyp = data[pos++] & 0xFF;
         InetSocketAddress remoteAddr = null;
         try {

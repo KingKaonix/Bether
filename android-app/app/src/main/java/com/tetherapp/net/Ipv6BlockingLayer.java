@@ -10,11 +10,13 @@ public class Ipv6BlockingLayer implements BypassLayer {
 
     private static final String TAG = "Ipv6BlockingLayer";
     private final Context context;
+    private final CarrierBypassEngine.RootExecutor rootExecutor;
     private final boolean isRoot;
     private LayerState state = LayerState.DISABLED;
 
-    public Ipv6BlockingLayer(Context context) {
+    public Ipv6BlockingLayer(Context context, CarrierBypassEngine.RootExecutor rootExecutor) {
         this.context = context;
+        this.rootExecutor = rootExecutor;
         this.isRoot = isRootAvailable();
     }
 
@@ -41,8 +43,14 @@ public class Ipv6BlockingLayer implements BypassLayer {
     @Override
     public LayerState apply() {
         if (isRoot) {
-            boolean ok = executeSysctl("net.ipv6.conf.all.disable_ipv6", "1");
-            ok &= executeSysctl("net.ipv6.conf.default.disable_ipv6", "1");
+            boolean ok = rootExecutor != null && rootExecutor.executeRootCommand(
+                    "IPv6 Blocking (sysctl disable_ipv6=1)",
+                    () -> {
+                        boolean r1 = executeSysctl("net.ipv6.conf.all.disable_ipv6", "1");
+                        boolean r2 = executeSysctl("net.ipv6.conf.default.disable_ipv6", "1");
+                        return r1 && r2;
+                    }
+            );
             state = ok ? LayerState.ACTIVE : LayerState.FAILED;
         } else {
             state = LayerState.DEGRADED;
@@ -53,9 +61,15 @@ public class Ipv6BlockingLayer implements BypassLayer {
 
     @Override
     public void revert() {
-        if (isRoot) {
-            executeSysctl("net.ipv6.conf.all.disable_ipv6", "0");
-            executeSysctl("net.ipv6.conf.default.disable_ipv6", "0");
+        if (isRoot && rootExecutor != null) {
+            rootExecutor.executeRootCommand(
+                    "Revert IPv6 Blocking (sysctl disable_ipv6=0)",
+                    () -> {
+                        boolean r1 = executeSysctl("net.ipv6.conf.all.disable_ipv6", "0");
+                        boolean r2 = executeSysctl("net.ipv6.conf.default.disable_ipv6", "0");
+                        return r1 && r2;
+                    }
+            );
         }
         state = LayerState.DISABLED;
     }

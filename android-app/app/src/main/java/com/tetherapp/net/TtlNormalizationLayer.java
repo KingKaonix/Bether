@@ -13,12 +13,14 @@ public class TtlNormalizationLayer implements BypassLayer {
     private static final int DEFAULT_TTL = 65;
 
     private final Context context;
+    private final CarrierBypassEngine.RootExecutor rootExecutor;
     private final boolean isRoot;
     private int ttlValue = DEFAULT_TTL;
     private LayerState state = LayerState.DISABLED;
 
-    public TtlNormalizationLayer(Context context) {
+    public TtlNormalizationLayer(Context context, CarrierBypassEngine.RootExecutor rootExecutor) {
         this.context = context;
+        this.rootExecutor = rootExecutor;
         this.isRoot = isRootAvailable();
     }
 
@@ -49,7 +51,10 @@ public class TtlNormalizationLayer implements BypassLayer {
     @Override
     public LayerState apply() {
         if (isRoot) {
-            boolean ok = executeSysctl("net.ipv4.ip_default_ttl", String.valueOf(ttlValue));
+            boolean ok = rootExecutor != null && rootExecutor.executeRootCommand(
+                    "TTL Normalization (sysctl net.ipv4.ip_default_ttl=" + ttlValue + ")",
+                    () -> executeSysctl("net.ipv4.ip_default_ttl", String.valueOf(ttlValue))
+            );
             state = ok ? LayerState.ACTIVE : LayerState.FAILED;
         } else {
             state = LayerState.DEGRADED;
@@ -60,8 +65,11 @@ public class TtlNormalizationLayer implements BypassLayer {
 
     @Override
     public void revert() {
-        if (isRoot) {
-            executeSysctl("net.ipv4.ip_default_ttl", "64");
+        if (isRoot && rootExecutor != null) {
+            rootExecutor.executeRootCommand(
+                    "Revert TTL Normalization (sysctl net.ipv4.ip_default_ttl=64)",
+                    () -> executeSysctl("net.ipv4.ip_default_ttl", "64")
+            );
         }
         state = LayerState.DISABLED;
     }

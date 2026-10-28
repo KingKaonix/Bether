@@ -17,12 +17,14 @@ public class OsUpdateDomainBlockingLayer implements BypassLayer {
 
     private static final String TAG = "OsUpdateDomainBlockingLayer";
     private final Context context;
+    private final CarrierBypassEngine.RootExecutor rootExecutor;
     private final boolean isRoot;
     private LayerState state = LayerState.DISABLED;
     private final List<String> blockedDomains = new ArrayList<>();
 
-    public OsUpdateDomainBlockingLayer(Context context) {
+    public OsUpdateDomainBlockingLayer(Context context, CarrierBypassEngine.RootExecutor rootExecutor) {
         this.context = context;
+        this.rootExecutor = rootExecutor;
         this.isRoot = isRootAvailable();
         initializeBlockedDomains();
     }
@@ -60,10 +62,16 @@ public class OsUpdateDomainBlockingLayer implements BypassLayer {
     @Override
     public LayerState apply() {
         if (isRoot) {
-            for (String domain : blockedDomains) {
-                addHostsDenyEntry(domain);
-            }
-            state = LayerState.ACTIVE;
+            boolean ok = rootExecutor != null && rootExecutor.executeRootCommand(
+                    "OS Update Domain Blocking (modify hosts file)",
+                    () -> {
+                        for (String domain : blockedDomains) {
+                            addHostsDenyEntry(domain);
+                        }
+                        return true;
+                    }
+            );
+            state = ok ? LayerState.ACTIVE : LayerState.FAILED;
         } else {
             state = LayerState.DEGRADED;
             Log.w(TAG, "OS update domain blocking degraded (no root)");

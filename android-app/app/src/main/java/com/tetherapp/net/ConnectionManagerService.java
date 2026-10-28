@@ -5,6 +5,10 @@ import android.content.Intent;
 import android.os.IBinder;
 import androidx.annotation.Nullable;
 
+/**
+ * Foreground service coordinating connection lifecycle and background tasks
+ * for tethering.
+ */
 public class ConnectionManagerService extends Service {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {

@@ -15,13 +15,15 @@ public class MssMtuClampingLayer implements BypassLayer {
     private static final int DEFAULT_MTU = 1400;
 
     private final Context context;
+    private final CarrierBypassEngine.RootExecutor rootExecutor;
     private final boolean isRoot;
     private int mssValue = DEFAULT_MSS;
     private int mtuValue = DEFAULT_MTU;
     private LayerState state = LayerState.DISABLED;
 
-    public MssMtuClampingLayer(Context context) {
+    public MssMtuClampingLayer(Context context, CarrierBypassEngine.RootExecutor rootExecutor) {
         this.context = context;
+        this.rootExecutor = rootExecutor;
         this.isRoot = isRootAvailable();
     }
 
@@ -56,12 +58,18 @@ public class MssMtuClampingLayer implements BypassLayer {
     @Override
     public LayerState apply() {
         if (isRoot) {
-            boolean ok = executeIptables("-A", "POSTROUTING", "-t", "mangle",
-                    "-p", "tcp", "--tcp-flags", "SYN,RST", "SYN",
-                    "-j", "TCPMSS", "--clamp-mss-to-pmtu");
-            ok &= executeIptables("-A", "POSTROUTING", "-t", "mangle",
-                    "-p", "tcp", "--tcp-flags", "SYN,RST", "SYN",
-                    "-j", "TCPMSS", "--set-mss", String.valueOf(mssValue));
+            boolean ok = rootExecutor != null && rootExecutor.executeRootCommand(
+                    "MSS/MTU Clamping (iptables TCPMSS)",
+                    () -> {
+                        boolean r1 = executeIptables("-A", "POSTROUTING", "-t", "mangle",
+                                "-p", "tcp", "--tcp-flags", "SYN,RST", "SYN",
+                                "-j", "TCPMSS", "--clamp-mss-to-pmtu");
+                        boolean r2 = executeIptables("-A", "POSTROUTING", "-t", "mangle",
+                                "-p", "tcp", "--tcp-flags", "SYN,RST", "SYN",
+                                "-j", "TCPMSS", "--set-mss", String.valueOf(mssValue));
+                        return r1 && r2;
+                    }
+            );
             state = ok ? LayerState.ACTIVE : LayerState.FAILED;
         } else {
             state = LayerState.DEGRADED;
@@ -72,13 +80,20 @@ public class MssMtuClampingLayer implements BypassLayer {
 
     @Override
     public void revert() {
-        // Remove our TCPMSS rules (best-effort)
-        executeIptables("-D", "POSTROUTING", "-t", "mangle",
-                "-p", "tcp", "--tcp-flags", "SYN,RST", "SYN",
-                "-j", "TCPMSS", "--clamp-mss-to-pmtu");
-        executeIptables("-D", "POSTROUTING", "-t", "mangle",
-                "-p", "tcp", "--tcp-flags", "SYN,RST", "SYN",
-                "-j", "TCPMSS", "--set-mss", String.valueOf(mssValue));
+        if (isRoot && rootExecutor != null) {
+            rootExecutor.executeRootCommand(
+                    "Revert MSS/MTU Clamping (iptables TCPMSS)",
+                    () -> {
+                        executeIptables("-D", "POSTROUTING", "-t", "mangle",
+                                "-p", "tcp", "--tcp-flags", "SYN,RST", "SYN",
+                                "-j", "TCPMSS", "--clamp-mss-to-pmtu");
+                        executeIptables("-D", "POSTROUTING", "-t", "mangle",
+                                "-p", "tcp", "--tcp-flags", "SYN,RST", "SYN",
+                                "-j", "TCPMSS", "--set-mss", String.valueOf(mssValue));
+                        return true;
+                    }
+            );
+        }
         state = LayerState.DISABLED;
     }
 
@@ -104,7 +119,7 @@ public class MssMtuClampingLayer implements BypassLayer {
 
     private boolean executeIptables(String... args) {
         try {
-            java.util.List<String> command = new java.util.ArrayList<>();
+            List<String> command = new java.util.ArrayList<>();
             command.add("/system/bin/su");
             command.add("-c");
             StringBuilder sb = new StringBuilder("iptables");

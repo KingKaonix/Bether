@@ -7,6 +7,9 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 /**
  * 6-layer carrier detection bypass engine.
@@ -24,9 +27,15 @@ import java.util.Map;
  *   6. Optional traffic shaping (placeholder)
  *
  * Layers requiring root run in DEGRADED mode when root is unavailable.
+ * Security hardening: Requires explicit user confirmation via BypassConfirmationListener
+ * before executing any root commands (su, iptables, writing to system). If no listener
+ * is registered, root operations are skipped as a fail-safe.
  */
 public class CarrierBypassEngine {
     private static final String TAG = "CarrierBypassEngine";
+
+    public static final int DEFAULT_TTL = 65;
+    public static final int DEFAULT_MSS = 1360;
 
     private final Context context;
     private final boolean isRoot;
@@ -35,7 +44,24 @@ public class CarrierBypassEngine {
     private final Map<BypassLayer.Type, BypassLayer> layers = new HashMap<>();
     private final List<BypassLayer.Type> layerOrder = new ArrayList<>();
 
-    private final java.util.List<BypassListener> listeners = new java.util.ArrayList<>();
+    private final List<BypassListener> listeners = new ArrayList<>();
+    private BypassConfirmationListener confirmationListener;
+
+    /**
+     * Listener for carrier bypass root operation confirmation.
+     * Required for security hardening to prevent silent execution of elevated root/su commands,
+     * iptables modifications, or writes to system partitions without explicit user consent.
+     */
+    public interface BypassConfirmationListener {
+        void onConfirmationRequired(String description, Runnable onApproved);
+    }
+
+    /**
+     * Interface for executing root commands securely with confirmation.
+     */
+    public interface RootExecutor {
+        boolean executeRootCommand(String description, Callable<Boolean> action);
+    }
 
     public CarrierBypassEngine(Context context) {
         this.context = context;
@@ -44,13 +70,50 @@ public class CarrierBypassEngine {
         Log.i(TAG, "CarrierBypassEngine initialized (root=" + isRoot + ")");
     }
 
+    public void setConfirmationListener(BypassConfirmationListener listener) {
+        this.confirmationListener = listener;
+    }
+
+    public BypassConfirmationListener getConfirmationListener() {
+        return confirmationListener;
+    }
+
+    /**
+     * Executes a dangerous root operation guarded by confirmation listener check.
+     * If no confirmation listener is set, logs a warning and skips the operation (fail-safe).
+     */
+    public boolean executeRootCommand(String description, Callable<Boolean> action) {
+        if (confirmationListener == null) {
+            Log.w(TAG, "Security Warning: No BypassConfirmationListener set. Skipping root operation (fail-safe): " + description);
+            return false;
+        }
+        final boolean[] result = {false};
+        final CountDownLatch latch = new CountDownLatch(1);
+        confirmationListener.onConfirmationRequired(description, () -> {
+            try {
+                result[0] = action.call();
+            } catch (Exception e) {
+                Log.e(TAG, "Root command execution failed: " + description, e);
+                result[0] = false;
+            } finally {
+                latch.countDown();
+            }
+        });
+        try {
+            latch.await(1000, TimeUnit.MILLISECONDS);
+        } catch (InterruptedException ignored) {
+        }
+        return result[0];
+    }
+
     private void initializeLayers() {
-        addLayer(new TtlNormalizationLayer(context));
-        addLayer(new Ipv6BlockingLayer(context));
+        RootExecutor rootExecutor = this::executeRootCommand;
+        addLayer(new TtlNormalizationLayer(context, rootExecutor));
+        addLayer(new Ipv6BlockingLayer(context, rootExecutor));
         addLayer(new DnsLeakPreventionLayer(context));
-        addLayer(new OsUpdateDomainBlockingLayer(context));
-        addLayer(new MssMtuClampingLayer(context));
-        addLayer(new TrafficShapingLayer(context));
+        addLayer(new OsUpdateDomainBlockingLayer(context, rootExecutor));
+        addLayer(new MssMtuClampingLayer(context, rootExecutor));
+        addLayer(new TrafficShapingLayer(context, rootExecutor));
     }
 
     private void addLayer(BypassLayer layer) {
@@ -172,7 +235,7 @@ public class CarrierBypassEngine {
         if (layer instanceof TtlNormalizationLayer) {
             return ((TtlNormalizationLayer) layer).getTtlValue();
         }
-        return 65;
+        return DEFAULT_TTL;
     }
 
     public int getMssValue() {
@@ -180,7 +243,7 @@ public class CarrierBypassEngine {
         if (layer instanceof MssMtuClampingLayer) {
             return ((MssMtuClampingLayer) layer).getMssValue();
         }
-        return 1360;
+        return DEFAULT_MSS;
     }
 
     public int getMtuValue() {

@@ -37,12 +37,16 @@ class Socks5Client:
     def __init__(self, host: str, port: int = 1080,
                  username: Optional[str] = None,
                  password: Optional[str] = None,
-                 timeout: float = 10.0):
+                 timeout: float = 10.0,
+                 tls: bool = False,
+                 tls_verify: bool = False):
         self.host = host
         self.port = port
         self.username = username
         self.password = password
         self.timeout = timeout
+        self.tls = tls
+        self.tls_verify = tls_verify
         self.sock: Optional[socket.socket] = None
         self._lock = threading.Lock()
         self.total_bytes_sent = 0
@@ -51,12 +55,21 @@ class Socks5Client:
 
     def connect(self) -> bool:
         try:
-            self.sock = socket.create_connection((self.host, self.port), timeout=self.timeout)
+            raw_sock = socket.create_connection((self.host, self.port), timeout=self.timeout)
+            if self.tls:
+                import ssl
+                ctx = ssl.create_default_context()
+                if not self.tls_verify:
+                    ctx.check_hostname = False
+                    ctx.verify_mode = ssl.CERT_NONE
+                self.sock = ctx.wrap_socket(raw_sock, server_hostname=self.host)
+            else:
+                self.sock = raw_sock
             self.sock.settimeout(self.timeout)
             if not self._authenticate():
                 self.close()
                 return False
-            logger.info("Connected to SOCKS5 proxy %s:%d", self.host, self.port)
+            logger.info("Connected to SOCKS5 proxy %s:%d (TLS=%s)", self.host, self.port, self.tls)
             return True
         except OSError as exc:
             logger.error("Failed to connect to SOCKS5 proxy: %s", exc)

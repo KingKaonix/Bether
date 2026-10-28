@@ -2,10 +2,10 @@
 """Cyberpunk-themed GTK3 GUI for the Linux tethering client.
 
 Provides:
-- Connection controls (host/port, connect/disconnect)
-- Real-time bandwidth statistics
+- Connection controls (host/port, connect/disconnect, mDNS scan)
+- Real-time bandwidth statistics and Cairo graph
 - Connection health monitoring
-- System tray integration
+- System tray integration (AppIndicator)
 """
 
 from __future__ import annotations
@@ -23,6 +23,7 @@ import time
 from typing import Optional
 
 from .linux_connection_manager import LinuxConnectionManager, LinuxConnectionState
+from .tray_indicator import TrayIndicator
 
 logger = logging.getLogger("tetherapp.linux.gui")
 
@@ -81,11 +82,12 @@ label.metric {{
 
 
 class TetherClientWindow(Gtk.ApplicationWindow):
-    def __init__(self, app: Gtk.Application, manager: LinuxConnectionManager):
+    def __init__(self, app: Gtk.Application, manager: LinuxConnectionManager, tray_indicator: Optional[TrayIndicator] = None):
         super().__init__(application=app)
         self.manager = manager
+        self.tray_indicator = tray_indicator
         self.set_title("Bether — Linux Tether Client")
-        self.set_default_size(700, 520)
+        self.set_default_size(700, 600)
         self.set_position(Gtk.WindowPosition.CENTER)
 
         self._css_provider = Gtk.CssProvider()
@@ -96,21 +98,24 @@ class TetherClientWindow(Gtk.ApplicationWindow):
             Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION,
         )
 
+        self.history_sent = [0.0] * 60
+        self.history_recv = [0.0] * 60
+        self._last_bytes_sent = 0
+        self._last_bytes_recv = 0
+        self._last_poll_time = time.time()
+
         self._build_ui()
         self._update_ui_from_state()
 
         # Polling loop for stats
         self._poll_source = GLib.timeout_add(1000, self._on_poll)
 
-        # Connect to state changes via periodic check (manager has no signal API here)
-        self._last_state = manager.state
-
     def _build_ui(self):
         vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
-        vbox.set_margin_top(24)
-        vbox.set_margin_bottom(24)
-        vbox.set_margin_start(24)
-        vbox.set_margin_end(24)
+        vbox.set_margin_top(20)
+        vbox.set_margin_bottom(20)
+        vbox.set_margin_start(20)
+        vbox.set_margin_end(20)
         self.add(vbox)
 
         # Header
@@ -126,7 +131,7 @@ class TetherClientWindow(Gtk.ApplicationWindow):
         vbox.pack_start(sub, False, False, 0)
 
         separator = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
-        vbox.pack_start(separator, False, False, 8)
+        vbox.pack_start(separator, False, False, 4)
 
         # Connection config frame
         cfg_frame = Gtk.Frame()
@@ -135,23 +140,26 @@ class TetherClientWindow(Gtk.ApplicationWindow):
         cfg_label.set_markup(f'<span weight="bold" color="{CYBER_PRIMARY}">Connection</span>')
         cfg_frame.set_label_widget(cfg_label)
         cfg_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-        cfg_box.set_margin_top(12)
-        cfg_box.set_margin_bottom(12)
-        cfg_box.set_margin_start(12)
-        cfg_box.set_margin_end(12)
+        cfg_box.set_margin_top(10)
+        cfg_box.set_margin_bottom(10)
+        cfg_box.set_margin_start(10)
+        cfg_box.set_margin_end(10)
         cfg_frame.add(cfg_box)
         vbox.pack_start(cfg_frame, False, False, 0)
 
-        # Host row
+        # Host row with Scan LAN button
         host_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         host_label = Gtk.Label(label="Host:")
         host_label.set_width_chars(8)
         host_label.set_halign(Gtk.Align.START)
         self.entry_host = Gtk.Entry()
         self.entry_host.set_text(self.manager.host)
-        self.entry_host.set_width_chars(24)
+        self.entry_host.set_width_chars(20)
+        self.btn_scan = Gtk.Button(label="Scan LAN")
+        self.btn_scan.connect("clicked", self._on_scan_lan)
         host_row.pack_start(host_label, False, False, 0)
         host_row.pack_start(self.entry_host, False, False, 0)
+        host_row.pack_start(self.btn_scan, False, False, 0)
         cfg_box.pack_start(host_row, False, False, 0)
 
         # Port row
@@ -172,6 +180,8 @@ class TetherClientWindow(Gtk.ApplicationWindow):
         user_label.set_width_chars(8)
         user_label.set_halign(Gtk.Align.START)
         self.entry_user = Gtk.Entry()
+        if self.manager.username:
+            self.entry_user.set_text(self.manager.username)
         self.entry_user.set_placeholder_text("username (optional)")
         self.entry_user.set_width_chars(16)
         pass_label = Gtk.Label(label="Pass:")
@@ -201,18 +211,18 @@ class TetherClientWindow(Gtk.ApplicationWindow):
         cfg_box.pack_start(btn_row, False, False, 0)
 
         separator2 = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
-        vbox.pack_start(separator2, False, False, 8)
+        vbox.pack_start(separator2, False, False, 4)
 
         # Status frame
         st_frame = Gtk.Frame()
         st_label = Gtk.Label()
         st_label.set_markup(f'<span weight="bold" color="{CYBER_PRIMARY}">Connection Status</span>')
         st_frame.set_label_widget(st_label)
-        st_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
-        st_box.set_margin_top(12)
-        st_box.set_margin_bottom(12)
-        st_box.set_margin_start(12)
-        st_box.set_margin_end(12)
+        st_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        st_box.set_margin_top(10)
+        st_box.set_margin_bottom(10)
+        st_box.set_margin_start(10)
+        st_box.set_margin_end(10)
         st_frame.add(st_box)
         vbox.pack_start(st_frame, False, False, 0)
 
@@ -230,36 +240,66 @@ class TetherClientWindow(Gtk.ApplicationWindow):
         st_box.pack_start(self.lbl_error, False, False, 0)
 
         separator3 = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
-        vbox.pack_start(separator3, False, False, 8)
+        vbox.pack_start(separator3, False, False, 4)
 
-        # Metrics frame
+        # Metrics frame with Bandwidth Graph
         m_frame = Gtk.Frame()
         m_label = Gtk.Label()
-        m_label.set_markup(f'<span weight="bold" color="{CYBER_PRIMARY}">Real-time Metrics</span>')
+        m_label.set_markup(f'<span weight="bold" color="{CYBER_PRIMARY}">Real-time Metrics & Bandwidth Graph</span>')
         m_frame.set_label_widget(m_label)
         m_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
-        m_box.set_margin_top(12)
-        m_box.set_margin_bottom(12)
-        m_box.set_margin_start(12)
-        m_box.set_margin_end(12)
+        m_box.set_margin_top(10)
+        m_box.set_margin_bottom(10)
+        m_box.set_margin_start(10)
+        m_box.set_margin_end(10)
         m_frame.add(m_box)
-        vbox.pack_start(m_frame, False, False, 0)
+        vbox.pack_start(m_frame, True, True, 0)
 
+        info_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=16)
         self.lbl_sent = Gtk.Label()
         self.lbl_sent.set_halign(Gtk.Align.START)
-        m_box.pack_start(self.lbl_sent, False, False, 0)
-
         self.lbl_recv = Gtk.Label()
         self.lbl_recv.set_halign(Gtk.Align.START)
-        m_box.pack_start(self.lbl_recv, False, False, 0)
+        info_box.pack_start(self.lbl_sent, False, False, 0)
+        info_box.pack_start(self.lbl_recv, False, False, 0)
+        m_box.pack_start(info_box, False, False, 0)
 
-        self.lbl_rate = Gtk.Label()
-        self.lbl_rate.set_halign(Gtk.Align.START)
-        m_box.pack_start(self.lbl_rate, False, False, 0)
+        self.drawing_area = Gtk.DrawingArea()
+        self.drawing_area.set_size_request(-1, 90)
+        self.drawing_area.connect("draw", self._on_draw_graph)
+        m_box.pack_start(self.drawing_area, True, True, 0)
 
-    # ------------------------------------------------------------------ #
-    # Event handlers
-    # ------------------------------------------------------------------ #
+    def _on_scan_lan(self, button):
+        self.btn_scan.set_sensitive(False)
+        self.btn_scan.set_label("Scanning...")
+        def _scan():
+            try:
+                from ..src.mdns_discovery import discover_hosts
+                hosts = discover_hosts(timeout=2.0)
+                GLib.idle_add(lambda: self._on_scan_finished(hosts))
+            except Exception as exc:
+                logger.error("Scan error: %s", exc)
+                GLib.idle_add(lambda: self._on_scan_finished([]))
+        threading.Thread(target=_scan, daemon=True).start()
+
+    def _on_scan_finished(self, hosts):
+        self.btn_scan.set_sensitive(True)
+        self.btn_scan.set_label("Scan LAN")
+        if hosts:
+            h = hosts[0]
+            self.entry_host.set_text(h.get("host", ""))
+            if h.get("port"):
+                self.entry_port.set_text(str(h.get("port")))
+            self._notify("Host Discovered", f"Found {h.get('name')} at {h.get('host')}:{h.get('port')}")
+        else:
+            self._notify("Scan Completed", "No tether hosts found on LAN")
+
+    def _notify(self, title: str, message: str):
+        try:
+            Notify.Notification.new(title, message, "network-vpn").show()
+        except Exception:
+            pass
+
     def _on_connect(self, button):
         host = self.entry_host.get_text().strip() or "127.0.0.1"
         try:
@@ -283,11 +323,12 @@ class TetherClientWindow(Gtk.ApplicationWindow):
         self.manager.disconnect()
         self._update_ui_from_state()
 
-    # ------------------------------------------------------------------ #
-    # UI refresh / polling
-    # ------------------------------------------------------------------ #
     def _update_ui_from_state(self):
         state = self.manager.state
+        state_str = state.value.upper()
+        if self.tray_indicator:
+            self.tray_indicator.update_status(state_str)
+
         if state == LinuxConnectionState.CONNECTED:
             self.lbl_state.set_markup(f'<span class="status connected" color="{CYBER_PRIMARY}">STATE: CONNECTED</span>')
             self.btn_connect.set_sensitive(False)
@@ -295,11 +336,11 @@ class TetherClientWindow(Gtk.ApplicationWindow):
             self.entry_host.set_sensitive(False)
             self.entry_port.set_sensitive(False)
         elif state == LinuxConnectionState.CONNECTING or state == LinuxConnectionState.RECONNECTING:
-            self.lbl_state.set_markup(f'<span color="{CYBER_DIM}">STATE: {state.value.upper()}</span>')
+            self.lbl_state.set_markup(f'<span color="{CYBER_DIM}">STATE: {state_str}</span>')
             self.btn_connect.set_sensitive(False)
             self.btn_disconnect.set_sensitive(True)
         else:
-            self.lbl_state.set_markup(f'<span class="status disconnected" color="{CYBER_ACCENT}">STATE: {state.value.upper()}</span>')
+            self.lbl_state.set_markup(f'<span class="status disconnected" color="{CYBER_ACCENT}">STATE: {state_str}</span>')
             self.btn_connect.set_sensitive(True)
             self.btn_disconnect.set_sensitive(False)
             self.entry_host.set_sensitive(True)
@@ -324,39 +365,79 @@ class TetherClientWindow(Gtk.ApplicationWindow):
         return f"{num:.2f} TB"
 
     def _on_poll(self):
-        # Poll bandwidth from the SOCKS client socket if connected
         try:
-            status = self.manager.get_status()
             self._update_ui_from_state()
 
-            if self.manager.state == LinuxConnectionState.CONNECTED:
-                # Use socket stats as best-effort throughput proxy
-                sent = 0
-                recv = 0
-                sock = self.manager.socks_client.sock
-                if sock is not None:
-                    try:
-                        sent = sock.getsockopt(
-                            __import__("socket").SOL_SOCKET,
-                            __import__("socket").SO_SNDBUF,
-                        )
-                    except OSError:
-                        pass
-                self.lbl_sent.set_markup(
-                    f'<span color="{CYBER_PRIMARY}">Sent: {self._format_bytes(sent)}</span>'
-                )
-                self.lbl_recv.set_markup(
-                    f'<span color="{CYBER_TEXT}">Received: {self._format_bytes(recv)}</span>'
-                )
-                self.lbl_rate.set_markup(
-                    f'<span color="{CYBER_DIM}">Proxy: {self.manager.host}:{self.manager.port}</span>'
-                )
+            now = time.time()
+            dt = now - self._last_poll_time
+            if dt <= 0:
+                dt = 1.0
+            self._last_poll_time = now
+
+            total_sent, total_recv = self.manager.get_bandwidth_stats()
+            rate_sent = max(0.0, (total_sent - self._last_bytes_sent) / dt)
+            rate_recv = max(0.0, (total_recv - self._last_bytes_recv) / dt)
+            self._last_bytes_sent = total_sent
+            self._last_bytes_recv = total_recv
+
+            self.history_sent.pop(0)
+            self.history_sent.append(rate_sent)
+            self.history_recv.pop(0)
+            self.history_recv.append(rate_recv)
+            self.drawing_area.queue_draw()
+
+            self.lbl_sent.set_markup(
+                f'<span color="{CYBER_PRIMARY}">Sent: {self._format_bytes(total_sent)} ({self._format_bytes(rate_sent)}/s)</span>'
+            )
+            self.lbl_recv.set_markup(
+                f'<span color="{CYBER_TEXT}">Recv: {self._format_bytes(total_recv)} ({self._format_bytes(rate_recv)}/s)</span>'
+            )
         except Exception as exc:
             logger.debug("Poll error: %s", exc)
-        return True  # keep polling
+        return True
+
+    def _on_draw_graph(self, widget, cr):
+        width = widget.get_allocated_width()
+        height = widget.get_allocated_height()
+
+        # Background
+        cr.set_source_rgb(0.06, 0.06, 0.06)
+        cr.paint()
+
+        # Grid lines
+        cr.set_source_rgba(0.2, 0.2, 0.2, 0.4)
+        cr.set_line_width(1)
+        for i in range(1, 4):
+            y = height * i / 4.0
+            cr.move_to(0, y)
+            cr.line_to(width, y)
+            cr.stroke()
+
+        max_val = max(max(self.history_sent, default=1.0), max(self.history_recv, default=1.0), 1024.0)
+
+        def draw_series(history, r, g, b):
+            if not history:
+                return
+            cr.set_source_rgb(r, g, b)
+            cr.set_line_width(2)
+            n = len(history)
+            dx = width / max(n - 1, 1)
+            for i, val in enumerate(history):
+                x = i * dx
+                y = height - (val / max_val) * (height - 8) - 4
+                if i == 0:
+                    cr.move_to(x, y)
+                else:
+                    cr.line_to(x, y)
+            cr.stroke()
+
+        # Sent (Cyan)
+        draw_series(self.history_sent, 0.0, 1.0, 0.8)
+        # Recv (Pink)
+        draw_series(self.history_recv, 1.0, 0.0, 0.67)
+        return False
 
     def do_delete_event(self, event):
-        # Minimize to tray instead of closing if tray supported
         self.hide()
         return True
 
@@ -366,40 +447,26 @@ class TetherClientApplication(Gtk.Application):
         super().__init__(application_id="com.tetherapp.linux.client")
         self.manager = manager
         self.window: Optional[TetherClientWindow] = None
-        self.tray_icon: Optional[Gtk.StatusIcon] = None
+        self.tray_indicator: Optional[TrayIndicator] = None
 
     def do_activate(self):
         if not self.window:
-            self.window = TetherClientWindow(self, self.manager)
+            try:
+                Notify.init("tetherapp")
+            except Exception:
+                pass
+            self.tray_indicator = TrayIndicator(self.manager, None)
+            self.window = TetherClientWindow(self, self.manager, self.tray_indicator)
+            self.tray_indicator.window = self.window
             self.window.show_all()
-            self._setup_tray()
         else:
             self.window.present()
 
-    def _setup_tray(self):
-        try:
-            Notify.init("tetherapp")
-            self.tray_icon = Gtk.StatusIcon()
-            self.tray_icon.set_from_icon_name("network-vpn")
-            self.tray_icon.set_title("Bether Tether Client")
-            self.tray_icon.connect("activate", lambda *_: self.window.present())
-            menu = Gtk.Menu()
-            item_quit = Gtk.MenuItem(label="Quit")
-            item_quit.connect("activate", lambda *_: Gtk.main_quit())
-            menu.append(item_quit)
-            menu.show_all()
-
-            def _on_popup(icon, button, activate_time):
-                menu.popup(None, None, None, None, button, activate_time)
-
-            self.tray_icon.connect("popup-menu", _on_popup)
-        except Exception as exc:
-            logger.debug("Tray setup skipped: %s", exc)
-
     def do_shutdown(self):
-        if self.tray_icon:
-            self.tray_icon.set_from_icon_name(None)
-        Notify.uninit()
+        try:
+            Notify.uninit()
+        except Exception:
+            pass
         super().do_shutdown()
 
 

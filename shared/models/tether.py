@@ -83,11 +83,23 @@ class ConnectionProfile:
     created_at: float = field(default_factory=time.time)
     last_connected: Optional[float] = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def _mask_sensitive(self, d: Dict[str, Any]) -> Dict[str, Any]:
+        """Mask sensitive fields like password in serialized dictionaries.
+        
+        TODO: Production security hardening: Use OS keyring (Android Keystore 
+        / libsecret on Linux) instead of storing plain-text passwords in profiles.
+        """
+        if "password" in d and d["password"] is not None:
+            d["password"] = "***"
+        return d
+
+    def to_dict(self, include_secrets: bool = False) -> Dict[str, Any]:
         d = asdict(self)
         d["role"] = self.role.value
         d["mode"] = self.mode.value if self.mode else None
         d["bypass_config"] = asdict(self.bypass_config)
+        if not include_secrets:
+            self._mask_sensitive(d)
         return d
 
     @classmethod
