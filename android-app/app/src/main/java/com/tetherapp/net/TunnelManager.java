@@ -5,11 +5,12 @@ import android.net.VpnService;
 import android.os.ParcelFileDescriptor;
 import android.util.Log;
 
-import java.io.FileDescriptor;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Manages the VpnService TUN interface for system-wide traffic routing.
@@ -23,7 +24,8 @@ public class TunnelManager {
     private final VpnService vpnService;
 
     private ParcelFileDescriptor vpnFd;
-    private FileChannel tunnelChannel;
+    private FileInputStream tunnelInput;
+    private FileOutputStream tunnelOutput;
     private Thread readThread;
     private Thread writeThread;
     private volatile boolean running = false;
@@ -41,7 +43,7 @@ public class TunnelManager {
         void onTunnelError(String message);
     }
 
-    private final java.util.List<TunnelListener> listeners = new java.util.ArrayList<>();
+    private final List<TunnelListener> listeners = new ArrayList<>();
 
     public TunnelManager(Context context, VpnService vpnService) {
         this.context = context;
@@ -56,15 +58,13 @@ public class TunnelManager {
         this.serverPort = serverPort;
 
         try {
-            VpnService.Builder builder = vpnService.getApplicationContext() != null
-                    ? vpnService.new Builder()
-                    : null;
+            VpnService.Builder builder = vpnService != null ? vpnService.new Builder() : null;
             if (builder == null) {
                 Log.e(TAG, "Cannot build VpnService.Builder outside service context");
                 return false;
             }
 
-            builder.setAddress("10.0.0.1", 24);
+            builder.addAddress("10.0.0.1", 24);
             builder.addRoute("0.0.0.0", 0);
             builder.addDnsServer("1.1.1.1");
             builder.addDnsServer("8.8.8.8");
@@ -77,9 +77,8 @@ public class TunnelManager {
                 return false;
             }
 
-            FileDescriptor fd = vpnFd.getFileDescriptor();
-            tunnelChannel = FileChannel.open(fd, java.nio.file.StandardOpenOption.READ,
-                    java.nio.file.StandardOpenOption.WRITE);
+            tunnelInput = new FileInputStream(vpnFd.getFileDescriptor());
+            tunnelOutput = new FileOutputStream(vpnFd.getFileDescriptor());
             running = true;
 
             readThread = new Thread(this::tunnelReadLoop, "tunnel-read");
@@ -92,7 +91,7 @@ public class TunnelManager {
 
             Log.i(TAG, "Tunnel established to " + serverAddress + ":" + serverPort);
             for (TunnelListener l : listeners) {
-                l.onTunnelEstablished(vpnService.getInterfaceName());
+                l.onTunnelEstablished("tun0");
             }
             return true;
         } catch (Exception e) {
@@ -111,9 +110,16 @@ public class TunnelManager {
         }
         running = false;
         try {
-            if (tunnelChannel != null) {
-                tunnelChannel.close();
-                tunnelChannel = null;
+            if (tunnelInput != null) {
+                tunnelInput.close();
+                tunnelInput = null;
+            }
+        } catch (Exception ignored) {
+        }
+        try {
+            if (tunnelOutput != null) {
+                tunnelOutput.close();
+                tunnelOutput = null;
             }
         } catch (Exception ignored) {
         }
@@ -124,7 +130,6 @@ public class TunnelManager {
             }
         } catch (Exception ignored) {
         }
-        vpnService.protect(null); // no-op safeguard
         Log.i(TAG, "Tunnel stopped");
         for (TunnelListener l : listeners) {
             l.onTunnelStopped();
@@ -154,21 +159,19 @@ public class TunnelManager {
 
     private void tunnelReadLoop() {
         try {
-            while (running && tunnelChannel != null && tunnelChannel.isOpen()) {
-                readBuffer.clear();
-                int bytes = tunnelChannel.read(readBuffer);
+            while (running && tunnelInput != null) {
+                byte[] buffer = new byte[65535];
+                int bytes = tunnelInput.read(buffer);
                 if (bytes < 0) {
                     break;
                 }
                 if (bytes > 0) {
-                    readBuffer.flip();
-                    byte[] packet = new byte[bytes];
-                    readBuffer.get(packet);
                     Log.d(TAG, "TUN read " + bytes + " bytes");
                     for (TunnelListener l : listeners) {
                         l.onTunnelPacketRead(bytes);
                     }
-                    // Forward packet to SOCKS5 proxy handled externally via writePacket()
+                    byte[] packet = new byte[bytes];
+                    System.arraycopy(buffer, 0, packet, 0, bytes);
                     injectPacket(packet);
                 }
             }
@@ -183,7 +186,6 @@ public class TunnelManager {
     }
 
     private void tunnelWriteLoop() {
-        // Placeholder for outbound tunnel writes driven by proxy responses.
         while (running) {
             try {
                 Thread.sleep(100);
@@ -194,15 +196,13 @@ public class TunnelManager {
         }
     }
 
-    /**
-     * Inject a raw packet into the TUN interface (inbound to the system).
-     */
     public void injectPacket(byte[] packet) {
-        if (!running || tunnelChannel == null || tunnelChannel.isOpen() == false) {
+        if (!running || tunnelOutput == null) {
             return;
         }
         try {
-            tunnelChannel.write(ByteBuffer.wrap(packet));
+            tunnelOutput.write(packet);
+            tunnelOutput.flush();
             for (TunnelListener l : listeners) {
                 l.onTunnelPacketWritten(packet.length);
             }
