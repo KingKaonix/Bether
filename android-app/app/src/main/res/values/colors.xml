@@ -4,4 +4,5 @@
     <color name="cyber_bg">#0a0a0a</color>
     <color name="cyber_surface">#1a1a1a</color>
     <color name="cyber_text">#e0e0e0</color>
+    <color name="cyber_dark">#00ffcc</color>
 </resources>

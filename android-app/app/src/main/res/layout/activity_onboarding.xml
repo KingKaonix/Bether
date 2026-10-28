@@ -1,42 +1,81 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:gravity="center"
     android:padding="24dp">
 
-    <TextView
-        android:id="@+id/tv_title"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="TetherApp"
-        android:textSize="32sp"
-        android:textStyle="bold"
-        android:textColor="@color/cyber_primary"
-        android:layout_marginBottom="8dp"/>
-
-    <TextView
-        android:id="@+id/tv_subtitle"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Select your tethering role"
-        android:textSize="16sp"
-        android:textColor="@color/cyber_text"
-        android:layout_marginBottom="40dp"/>
-
-    <Button
-        android:id="@+id/btn_host"
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="@string/role_host"
-        android:layout_marginBottom="12dp"/>
+        android:orientation="vertical"
+        android:gravity="center">
 
-    <Button
-        android:id="@+id/btn_client"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="@string/role_client"/>
+        <TextView
+            android:id="@+id/tv_title"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="TetherApp"
+            android:textSize="34sp"
+            android:textStyle="bold"
+            android:textColor="@color/cyber_primary"
+            android:layout_marginBottom="8dp"/>
 
-</LinearLayout>
+        <TextView
+            android:id="@+id/tv_subtitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Select your tethering role"
+            android:textSize="16sp"
+            android:textColor="@color/cyber_text"
+            android:layout_marginBottom="32dp"/>
+
+        <TextView
+            android:id="@+id/tv_detection"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Scanning interfaces..."
+            android:textSize="14sp"
+            android:textColor="@color/cyber_dark"
+            android:layout_marginBottom="24dp"/>
+
+        <RadioGroup
+            android:id="@+id/role_group"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <RadioButton
+                android:id="@+id/radio_host"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="I'm the TETHERING HOST (provides internet)"
+                android:textColor="@color/cyber_text"
+                android:textSize="16sp"
+                android:buttonTint="@color/cyber_primary"
+                android:layout_marginBottom="12dp"/>
+
+            <RadioButton
+                android:id="@+id/radio_client"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="I'm the CLIENT (needs internet from host)"
+                android:textColor="@color/cyber_text"
+                android:textSize="16sp"
+                android:buttonTint="@color/cyber_accent"
+                android:layout_marginBottom="24dp"/>
+
+        </RadioGroup>
+
+        <Button
+            android:id="@+id/btn_continue"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Continue"
+            android:textColor="@color/cyber_bg"
+            android:backgroundTint="@color/cyber_primary"
+            android:paddingStart="32dp"
+            android:paddingEnd="32dp"/>
+
+    </LinearLayout>
+</ScrollView>
