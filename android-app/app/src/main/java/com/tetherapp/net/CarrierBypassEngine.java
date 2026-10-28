@@ -321,7 +321,7 @@ public class CarrierBypassEngine {
 
     private void notifyLayer(BypassLayer.Type type, BypassLayer.LayerState state) {
         for (BypassListener l : listeners) {
-            l.onLayerStateChanged(toLegacyLayer(type), state);
+            l.onLayerStateChanged(toLegacyLayer(type), toLegacyState(state));
         }
         for (BypassListener l : listeners) {
             l.onBypassStatusChanged();
@@ -380,6 +380,16 @@ public class CarrierBypassEngine {
         ACTIVE,
         DEGRADED,
         FAILED
+    }
+
+    private LayerState toLegacyState(BypassLayer.LayerState state) {
+        switch (state) {
+            case DISABLED: return LayerState.DISABLED;
+            case ACTIVE: return LayerState.ACTIVE;
+            case DEGRADED: return LayerState.DEGRADED;
+            case FAILED: return LayerState.FAILED;
+            default: return LayerState.DISABLED;
+        }
     }
 
     private CarrierBypassLayer toLegacyLayer(BypassLayer.Type type) {

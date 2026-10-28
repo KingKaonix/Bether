@@ -147,7 +147,7 @@ public class PerformanceMonitor {
 
     public double getCurrentBitrateBps() {
         BandwidthSample s = getLatestSample();
-        return s != null ? s.bits_per_second_sent + s.bits_per_second_received : 0;
+        return s != null ? s.getBitsPerSecondSent() + s.getBitsPerSecondReceived() : 0;
     }
 
     public void addListener(QualityListener listener) {
