@@ -28,7 +28,6 @@ jobs:
         uses: android-actions/setup-android@v3
         with:
           api-level: ${{ matrix.api-level }}
-          build-tools: 34.0.0
 
       - name: Install Gradle
         run: |
