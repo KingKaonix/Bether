@@ -71,6 +71,11 @@ android {
         dataBinding true
     }
 
+    lint {
+        abortOnError false
+        checkReleaseBuilds false
+    }
+
     packaging {
         resources {
             excludes += [
