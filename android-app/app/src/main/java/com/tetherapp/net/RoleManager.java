@@ -3,7 +3,7 @@ package com.tetherapp.net;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.hardware.usb.UsbManager;
-import android.net.WifiManager;
+import android.net.wifi.WifiManager;
 import android.bluetooth.BluetoothAdapter;
 import android.util.Log;
 
