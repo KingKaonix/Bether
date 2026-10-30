@@ -27,47 +27,86 @@ from .tray_indicator import TrayIndicator
 
 logger = logging.getLogger("tetherapp.linux.gui")
 
-CYBER_BG = "#0a0a0a"
-CYBER_SURFACE = "#141414"
-CYBER_PRIMARY = "#00ffcc"
-CYBER_ACCENT = "#ff00aa"
-CYBER_TEXT = "#e0e0e0"
-CYBER_DIM = "#888888"
+CYBER_BG = "#0d0f18"
+CYBER_SURFACE = "#161b26"
+CYBER_PRIMARY = "#00f0ff"
+CYBER_ACCENT = "#ff007f"
+CYBER_SUCCESS = "#00ff9d"
+CYBER_TEXT = "#f0f6fc"
+CYBER_DIM = "#8b949e"
 
 CSS = f"""
 * {{
-    font-family: 'Share Tech Mono', monospace;
+    font-family: 'Inter', 'Liberation Sans', sans-serif;
+    font-size: 13px;
     color: {CYBER_TEXT};
 }}
 window {{
     background-color: {CYBER_BG};
 }}
 frame {{
-    border: 1px solid {CYBER_PRIMARY};
-    border-radius: 4px;
+    border: 1px solid rgba(0, 240, 255, 0.3);
+    border-radius: 8px;
     background-color: {CYBER_SURFACE};
+    padding: 8px;
 }}
-label.title {{
-    color: {CYBER_PRIMARY};
-    font-weight: bold;
-    font-size: 16px;
+entry {{
+    background-color: #1a2234;
+    border: 1px solid rgba(0, 240, 255, 0.4);
+    border-radius: 6px;
+    color: {CYBER_TEXT};
+    padding: 6px 10px;
+}}
+entry:focus {{
+    border: 1px solid {CYBER_PRIMARY};
+    box-shadow: 0 0 5px rgba(0, 240, 255, 0.5);
+}}
+button {{
+    background-color: #212d40;
+    border: 1px solid rgba(0, 240, 255, 0.3);
+    border-radius: 6px;
+    color: {CYBER_TEXT};
+    padding: 6px 12px;
+    font-weight: 600;
+}}
+button:hover {{
+    background-color: #283852;
+    border-color: {CYBER_PRIMARY};
 }}
 button.connect {{
     background-color: {CYBER_PRIMARY};
-    color: {CYBER_BG};
+    color: #000000;
     font-weight: bold;
-    border-radius: 4px;
+    border-radius: 6px;
+    padding: 8px 16px;
+}}
+button.connect:hover {{
+    background-color: #33f3ff;
 }}
 button.connect:disabled {{
-    background-color: {CYBER_DIM};
+    background-color: #1a2234;
+    color: {CYBER_DIM};
+    border-color: rgba(255, 255, 255, 0.1);
 }}
 button.disconnect {{
     background-color: {CYBER_ACCENT};
-    color: {CYBER_BG};
+    color: #ffffff;
     font-weight: bold;
-    border-radius: 4px;
+    border-radius: 6px;
+    padding: 8px 16px;
 }}
-label.status.connected {{
+button.disconnect:hover {{
+    background-color: #ff3399;
+}}
+button.disconnect:disabled {{
+    background-color: #1a2234;
+    color: {CYBER_DIM};
+    border-color: rgba(255, 255, 255, 0.1);
+}}
+separator {{
+    background: rgba(0, 240, 255, 0.2);
+    min-height: 1px;
+}}
     color: {CYBER_PRIMARY};
     font-weight: bold;
 }}
