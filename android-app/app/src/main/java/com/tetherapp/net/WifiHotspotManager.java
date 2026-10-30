@@ -22,7 +22,7 @@ public class WifiHotspotManager implements TetherInterface {
     private final WifiManager wifiManager;
 
     private boolean hotspotActive = false;
-    private String hotspotSsid = "TetherApp-Hotspot";
+    private String hotspotSsid = "KAOSNET";
     private String hotspotPassphrase = "tetherapp123";
 
     private final java.util.List<HotspotListener> hotspotListeners = new java.util.ArrayList<>();

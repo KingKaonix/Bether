@@ -157,9 +157,12 @@ class TetherClientWindow(Gtk.ApplicationWindow):
         self.entry_host.set_width_chars(20)
         self.btn_scan = Gtk.Button(label="Scan LAN")
         self.btn_scan.connect("clicked", self._on_scan_lan)
+        self.btn_wifi_scan = Gtk.Button(label="Scan Wi-Fi")
+        self.btn_wifi_scan.connect("clicked", self._on_scan_wifi)
         host_row.pack_start(host_label, False, False, 0)
         host_row.pack_start(self.entry_host, False, False, 0)
         host_row.pack_start(self.btn_scan, False, False, 0)
+        host_row.pack_start(self.btn_wifi_scan, False, False, 0)
         cfg_box.pack_start(host_row, False, False, 0)
 
         # Port row
@@ -269,18 +272,32 @@ class TetherClientWindow(Gtk.ApplicationWindow):
         self.drawing_area.connect("draw", self._on_draw_graph)
         m_box.pack_start(self.drawing_area, True, True, 0)
 
-    def _on_scan_lan(self, button):
-        self.btn_scan.set_sensitive(False)
-        self.btn_scan.set_label("Scanning...")
+    def _on_scan_wifi(self, button):
+        self.btn_wifi_scan.set_sensitive(False)
+        self.btn_wifi_scan.set_label("Scanning Wi-Fi...")
         def _scan():
             try:
-                from ..src.mdns_discovery import discover_hosts
-                hosts = discover_hosts(timeout=2.0)
-                GLib.idle_add(lambda: self._on_scan_finished(hosts))
+                from ..src.wifi_scanner import WifiScanner
+                networks = WifiScanner.scan_networks()
+                kaosnet = WifiScanner.find_kaosnet(networks)
+                GLib.idle_add(lambda: self._on_wifi_scan_finished(networks, kaosnet))
             except Exception as exc:
-                logger.error("Scan error: %s", exc)
-                GLib.idle_add(lambda: self._on_scan_finished([]))
+                logger.error("Wi-Fi scan error: %s", exc)
+                GLib.idle_add(lambda: self._on_wifi_scan_finished([], None))
         threading.Thread(target=_scan, daemon=True).start()
+
+    def _on_wifi_scan_finished(self, networks, kaosnet):
+        self.btn_wifi_scan.set_sensitive(True)
+        self.btn_wifi_scan.set_label("Scan Wi-Fi")
+        if kaosnet:
+            self._notify("KAOSNET Found", f"Found hotspot KAOSNET (Signal: {kaosnet.get('signal')}%). Connecting...")
+            def _conn():
+                from ..src.wifi_scanner import WifiScanner
+                success = WifiScanner.connect_wifi("KAOSNET", "tetherapp123")
+                GLib.idle_add(lambda: self._notify("Wi-Fi Connected", "Successfully connected to KAOSNET" if success else "Failed to connect to KAOSNET"))
+            threading.Thread(target=_conn, daemon=True).start()
+        else:
+            self._notify("KAOSNET Not Found", f"Scanned {len(networks)} networks, but KAOSNET was not found.")
 
     def _on_scan_finished(self, hosts):
         self.btn_scan.set_sensitive(True)
