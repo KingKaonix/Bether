@@ -27,17 +27,17 @@ from .tray_indicator import TrayIndicator
 
 logger = logging.getLogger("tetherapp.linux.gui")
 
-CYBER_BG = "#0f172a"
-CYBER_SURFACE = "#192134"
-CYBER_PRIMARY = "#00f0ff"
-CYBER_ACCENT = "#ff007f"
-CYBER_SUCCESS = "#22c55e"
-CYBER_TEXT = "#ffffff"
-CYBER_DIM = "#94a3b8"
+CYBER_BG = "#f8fafc"
+CYBER_SURFACE = "#ffffff"
+CYBER_PRIMARY = "#2563eb"
+CYBER_ACCENT = "#ea580c"
+CYBER_SUCCESS = "#16a34a"
+CYBER_TEXT = "#1e293b"
+CYBER_DIM = "#64748b"
 
 CSS = f"""
 * {{
-    font-family: 'JetBrains Mono', 'Inter', monospace;
+    font-family: 'Inter', 'Liberation Sans', sans-serif;
     font-size: 13px;
     color: {CYBER_TEXT};
 }}
@@ -45,48 +45,48 @@ window {{
     background-color: {CYBER_BG};
 }}
 frame {{
-    border: 1px solid rgba(0, 240, 255, 0.25);
-    border-radius: 10px;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
     background-color: {CYBER_SURFACE};
-    padding: 10px;
+    padding: 12px;
 }}
 entry {{
-    background-color: #10192e;
-    border: 1px solid rgba(0, 240, 255, 0.35);
+    background-color: #f1f5f9;
+    border: 1px solid #cbd5e1;
     border-radius: 6px;
     color: {CYBER_TEXT};
     padding: 8px 12px;
 }}
 entry:focus {{
     border: 1px solid {CYBER_PRIMARY};
-    box-shadow: 0 0 8px rgba(0, 240, 255, 0.4);
+    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
 }}
 button {{
-    background-color: #334155;
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background-color: #f1f5f9;
+    border: 1px solid #cbd5e1;
     border-radius: 6px;
     color: {CYBER_TEXT};
     padding: 8px 14px;
     font-weight: 600;
 }}
 button:hover {{
-    background-color: #475569;
-    border-color: {CYBER_PRIMARY};
+    background-color: #e2e8f0;
+    border-color: #94a3b8;
 }}
 button.connect {{
-    background-color: {CYBER_SUCCESS};
-    color: #0f172a;
+    background-color: {CYBER_PRIMARY};
+    color: #ffffff;
     font-weight: bold;
     border-radius: 6px;
     padding: 10px 20px;
 }}
 button.connect:hover {{
-    background-color: #16a34a;
+    background-color: #1d4ed8;
 }}
 button.connect:disabled {{
-    background-color: #10192e;
-    color: {CYBER_DIM};
-    border-color: transparent;
+    background-color: #e2e8f0;
+    color: #94a3b8;
+    border-color: #cbd5e1;
 }}
 button.disconnect {{
     background-color: {CYBER_ACCENT};
@@ -96,15 +96,15 @@ button.disconnect {{
     padding: 10px 20px;
 }}
 button.disconnect:hover {{
-    background-color: #db2777;
+    background-color: #c2410c;
 }}
 button.disconnect:disabled {{
-    background-color: #10192e;
-    color: {CYBER_DIM};
-    border-color: transparent;
+    background-color: #e2e8f0;
+    color: #94a3b8;
+    border-color: #cbd5e1;
 }}
 separator {{
-    background: rgba(0, 240, 255, 0.15);
+    background: #e2e8f0;
     min-height: 1px;
 }}
     color: {CYBER_PRIMARY};
